@@ -5,12 +5,45 @@
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
     <title>Vortex</title>
-    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <meta name="theme-color" content="#0a0a0a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="/Vortex/manifest.json">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
     <style id="expo-reset">
       /* These styles make the body full-height */
       html,
       body {
         height: 100%;
+        background-color: #0a0a0a;
+        font-family: 'Inter', sans-serif !important;
+      }
+      * {
+        font-family: 'Inter', sans-serif !important;
+      }
+
+      /* Custom modern scrollbar */
+      ::-webkit-scrollbar { width: 10px; }
+      ::-webkit-scrollbar-track { background: #0a0a0a; }
+      ::-webkit-scrollbar-thumb { background: #262626; border-radius: 5px; border: 2px solid #0a0a0a; }
+      ::-webkit-scrollbar-thumb:hover { background: #404040; }
+
+      /* Sleek hover effects via data-testid for React Native Web */
+      [data-testid="product-card"] {
+        transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s ease !important;
+      }
+      [data-testid="product-card"]:hover {
+        transform: translateY(-6px) scale(1.02) !important;
+        box-shadow: 0 16px 40px rgba(0,0,0,0.7) !important;
+      }
+      [data-testid="action-btn"] {
+        transition: transform 0.2s ease, opacity 0.2s ease !important;
+      }
+      [data-testid="action-btn"]:hover {
+        transform: scale(1.05) !important;
+        opacity: 0.9 !important;
       }
       /* These styles disable body scrolling if you are using <ScrollView> */
       body {
@@ -32,6 +65,6 @@
     </noscript>
     <!-- The root element for your Expo app. -->
     <div id="root"></div>
-  <script src="/Vortex/_expo/static/js/web/index-aebcb7ab9b1a04f02fcdb621ed95595b.js" defer></script>
+  <script src="/Vortex/_expo/static/js/web/index-ec4853a194d371f855e7c7e4eb1ea5d9.js" defer></script>
 </body>
 </html>
