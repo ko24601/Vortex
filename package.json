@@ -1,0 +1,11 @@
+{
+  "name": "your-store-app-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "web": "npm --prefix your-store-app/your-store-app run web",
+    "start": "npm --prefix your-store-app/your-store-app start",
+    "build:web": "npm --prefix your-store-app/your-store-app run build:web",
+    "serve": "npx serve your-store-app/your-store-app/dist"
+  }
+}

@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Expo & Web builds
+.expo/
+**/.expo/
+web-build/
+**/web-build/
+expo-env.d.ts
+
+# Production build artifacts
+# dist/
+
+# Logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.orig
+.vscode/
+.idea/
+
+# Environment files
+.env*.local
