@@ -4,6 +4,7 @@ const {defineSecret, defineString} = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
 const fetch = require("node-fetch");
+const Stripe = require("stripe");
 
 admin.initializeApp();
 
@@ -18,6 +19,9 @@ const paypalSecret = defineSecret("PAYPAL_SECRET");
 // PayPal Client ID (not secret, but kept here for server-side calls)
 const PAYPAL_CLIENT_ID = "BAAajxUiXpVegAq_zM9DhOUrGq2TE28Xizd_lnsxu26OD7x1NXkiqbLmI_6DRUVmwpLUE6o7Ab9pdOZEKg";
 const PAYPAL_BASE = "https://api-m.paypal.com"; // Live mode
+
+// Stripe secret stored securely in Firebase Secret Manager
+const stripeSecret = defineSecret("STRIPE_SECRET_KEY");
 
 /**
  * Verifies a PayPal order capture with PayPal's API using the secret key.
@@ -82,6 +86,67 @@ exports.verifyPayPalPayment = onRequest(
       } catch (error) {
         console.error("Error verifying PayPal payment:", error);
         return res.status(500).json({error: "Internal server error"});
+      }
+    }
+);
+
+/**
+ * Dynamically creates a Stripe Checkout Session based on the cart items provided.
+ */
+exports.createDynamicCheckout = onRequest(
+    {
+      secrets: [stripeSecret],
+      cors: true,
+    },
+    async (req, res) => {
+      if (req.method !== "POST") {
+        return res.status(405).json({error: "Method not allowed"});
+      }
+
+      try {
+        const stripe = new Stripe(stripeSecret.value());
+        const {items, successUrl, cancelUrl} = req.body;
+
+        if (!items || !Array.isArray(items) || items.length === 0) {
+          return res.status(400).json({error: "No items provided in the cart."});
+        }
+
+        const line_items = items.map((item) => {
+          if (item.priceId) {
+            return {
+              price: item.priceId,
+              quantity: item.quantity,
+            };
+          } else {
+            return {
+              price_data: {
+                currency: "eur",
+                product_data: {
+                  name: item.name,
+                },
+                unit_amount: Math.round(item.price * 100),
+              },
+              quantity: item.quantity,
+            };
+          }
+        });
+
+        const session = await stripe.checkout.sessions.create({
+          ui_mode: "hosted_page",
+          mode: "payment",
+          payment_method_collection: "always",
+          billing_address_collection: "auto",
+          phone_number_collection: {enabled: true},
+          allow_promotion_codes: true,
+          line_items,
+          success_url: successUrl || "https://ko24601.github.io/Vortex/?success=true&session_id={CHECKOUT_SESSION_ID}",
+          cancel_url: cancelUrl || "https://ko24601.github.io/Vortex/?canceled=true",
+        });
+
+        return res.status(200).json({url: session.url});
+      } catch (error) {
+        console.error("Stripe Checkout Error:", error.message);
+        return res.status(500).json({error: error.message});
       }
     }
 );
@@ -158,80 +223,3 @@ exports.onProductCreated = onDocumentCreated(
       }
     },
 );
-
-
-exports.forwardVipInquiry = onDocumentCreated(
-    {
-      document: "vip_inquiries/{inquiryId}",
-      secrets: [gmailPass],
-    },
-    async (event) => {
-      const snapshot = event.data;
-      if (!snapshot) {
-        console.log("No data associated with the event");
-        return;
-      }
-
-      const data = snapshot.data();
-
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: gmailUser.value(),
-          pass: gmailPass.value(),
-        },
-      });
-
-      const mailOptions = {
-        from: "\"Boutique Vault\" <kvix3112@gmail.com>",
-        to: "kvix3112@gmail.com",
-        subject: "New VIP Concierge Inquiry",
-        text: `You have received a new secure ` +
-              `inquiry from your luxury ` +
-              `boutique app:\n\nMessage: ` +
-              `${data.message}\nSubmitted At: ` +
-              `${data.timestamp}`,
-      };
-
-      try {
-        await transporter.sendMail(mailOptions);
-        console.log(
-            "VIP Inquiry successfully forwarded to kvix3112@gmail.com.",
-        );
-      } catch (error) {
-        console.error("Error sending email:", error);
-      }
-    },
-);
-
-// Automatically triggers a notification when a new product is created in Firestore
-exports.onProductCreated = onDocumentCreated(
-    {
-      document: "products/{productId}",
-    },
-    async (event) => {
-      const snapshot = event.data;
-      if (!snapshot) {
-        console.log("No snapshot data available for product creation");
-        return;
-      }
-
-      const product = snapshot.data();
-
-      try {
-        await admin.firestore().collection("notifications").add({
-          title: "New Luxury Drop",
-          body: `${product.name || "An exclusive item"} is now available in ${product.category || "the collection"}.`,
-          type: "new_drop",
-          read: false,
-          timestamp: new Date().toISOString(),
-        });
-        console.log(`Notification successfully created for product: ${product.name}`);
-      } catch (error) {
-        console.error("Error creating notification for new product:", error);
-      }
-    },
-);
-
-
-// force update 
