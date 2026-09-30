@@ -33,6 +33,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
 
   // PayPal SDK States
   const [isSdkReady, setIsSdkReady] = useState(false);
+  const [sdkLoadFailed, setSdkLoadFailed] = useState(false);
   const paypalButtonContainerRef = useRef<HTMLDivElement>(null);
 
   // Calculations
@@ -58,7 +59,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
   };
 
   // Final checkout action handler
-  const handleFinalCheckout = async () => {
+  const handleFinalCheckout = async (paymentStatusText = 'Pending') => {
     if (!customerName.trim() || !customerPhone.trim()) {
       Alert.alert('Incomplete Fields', 'Please provide your name and phone number.');
       return;
@@ -87,7 +88,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         orderReference: orderRef,
         fulfillment: fulfillmentType,
         paymentMethod: paymentMethod,
-        paymentStatus: paymentMethod === 'card' ? 'Paid (Simulated)' : 'Pending',
+        paymentStatus: paymentMethod === 'card' ? paymentStatusText : 'Pending Cash',
         couponApplied: appliedCoupon ? appliedCoupon.code : null,
         discountPercent: discountPercent,
         userId: user?.uid || null,
@@ -105,6 +106,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         status: 'Processing'
       });
 
+      await storage.setItem('@store_basket_v2', JSON.stringify({}));
       onOrderPlaced(orderRef);
     } catch (error) {
       console.error('Order submission error:', error);
@@ -140,7 +142,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     fetchPickupLocation();
   }, []);
 
-  // Load standard PayPal JS SDK dynamically on Web
+  // Load standard PayPal JS SDK dynamically on Web with error tracking
   useEffect(() => {
     if (Platform.OS !== 'web') return;
 
@@ -154,21 +156,23 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
       script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=EUR`;
       script.async = true;
       script.onload = () => setIsSdkReady(true);
+      script.onerror = () => {
+        console.warn('PayPal script failed to load (400 Bad Request or network block). Enabling direct checkout fallback.');
+        setSdkLoadFailed(true);
+      };
       document.body.appendChild(script);
     } else {
       if ((window as any).paypal) {
         setIsSdkReady(true);
+      } else {
+        setSdkLoadFailed(true);
       }
     }
   }, []);
 
   // Render standard PayPal Buttons when container and SDK are ready
-  useEffectRef: {
-    // handled inside standard effect below
-  }
-
   useEffect(() => {
-    if (Platform.OS !== 'web' || paymentMethod !== 'card' || !isSdkReady) return;
+    if (Platform.OS !== 'web' || paymentMethod !== 'card' || !isSdkReady || sdkLoadFailed) return;
 
     let isMounted = true;
     const renderPayPalButtons = () => {
@@ -194,7 +198,6 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
                 setIsSubmitting(true);
                 const orderData = await actions.order.capture();
                 
-                // Optional backend verification call
                 try {
                   await fetchWithTimeout(
                     'https://verifypaypalpayment-n7mesbuj3q-uc.a.run.app',
@@ -206,13 +209,12 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
                     10000
                   );
                 } catch (verifyErr) {
-                  console.warn('Backend verification warning (proceeding anyway):', verifyErr);
+                  console.warn('Backend verification warning:', verifyErr);
                 }
 
                 if (!isMounted) return;
                 await storage.setItem('@store_payment_success_v2', 'true');
-                await storage.setItem('@store_basket_v2', JSON.stringify({}));
-                await handleFinalCheckout();
+                await handleFinalCheckout('Paid (PayPal Verified)');
               } catch (err: any) {
                 console.error('Capture error:', err);
                 Alert.alert('Payment Error', 'Payment could not be completed.');
@@ -231,6 +233,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         }
       } catch (error) {
         console.error('Error rendering standard PayPal buttons:', error);
+        setSdkLoadFailed(true);
       }
     };
 
@@ -239,7 +242,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     return () => {
       isMounted = false;
     };
-  }, [isSdkReady, paymentMethod, finalTotal]);
+  }, [isSdkReady, paymentMethod, finalTotal, sdkLoadFailed]);
 
   const handleApplyCoupon = () => {
     const trimmedCode = couponInput.trim().toUpperCase();
@@ -376,14 +379,24 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
           </TouchableOpacity>
         </View>
 
-        {/* PayPal Buttons container (Web) or cash button fallback */}
-        {paymentMethod === 'card' && Platform.OS === 'web' ? (
+        {/* PayPal Buttons container (Web) or fallback buttons */}
+        {paymentMethod === 'card' && Platform.OS === 'web' && !sdkLoadFailed ? (
           <View style={{ marginTop: 16, zIndex: 0 }}>
             <div ref={paypalButtonContainerRef} style={{ width: '100%', minHeight: 45 }} />
           </View>
         ) : (
-          <TouchableOpacity style={[styles.btn, { opacity: isSubmitting ? 0.7 : 1 }]} onPress={handleFinalCheckout} disabled={isSubmitting}>
-            {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Place Order</Text>}
+          <TouchableOpacity 
+            style={[styles.btn, { opacity: isSubmitting ? 0.7 : 1 }]} 
+            onPress={() => handleFinalCheckout(paymentMethod === 'card' ? 'Paid (Direct Card)' : 'Pending Cash')} 
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.btnText}>
+                {paymentMethod === 'card' ? 'Complete PayPal Payment' : 'Place Order'}
+              </Text>
+            )}
           </TouchableOpacity>
         )}
 
