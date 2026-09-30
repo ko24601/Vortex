@@ -292,7 +292,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
                     await actions.order!.capture();
                     // Then verify server-side via Firebase Cloud Function
                     const verifyRes = await fetch(
-                      'https://us-central1-dads-ee515.cloudfunctions.net/verifyPayPalPayment',
+                      'https://verifypaypalpayment-n7mesbuj3q-uc.a.run.app',
                       {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },

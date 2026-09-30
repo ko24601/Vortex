@@ -17,7 +17,7 @@ const gmailUser = defineString(
 const paypalSecret = defineSecret("PAYPAL_SECRET");
 // PayPal Client ID (not secret, but kept here for server-side calls)
 const PAYPAL_CLIENT_ID = "BAAajxUiXpVegAq_zM9DhOUrGq2TE28Xizd_lnsxu26OD7x1NXkiqbLmI_6DRUVmwpLUE6o7Ab9pdOZEKg";
-const PAYPAL_BASE = "https://api-m.sandbox.paypal.com"; // Switch to https://api-m.paypal.com for live
+const PAYPAL_BASE = "https://api-m.paypal.com"; // Live mode
 
 /**
  * Verifies a PayPal order capture with PayPal's API using the secret key.
