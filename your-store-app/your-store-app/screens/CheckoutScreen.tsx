@@ -33,7 +33,6 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
 
   // PayPal SDK States
   const [isSdkReady, setIsSdkReady] = useState(false);
-  const [sdkLoadFailed, setSdkLoadFailed] = useState(false);
   const paypalButtonContainerRef = useRef<HTMLDivElement>(null);
 
   // Calculations
@@ -58,7 +57,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     return response;
   };
 
-  // Final checkout action handler
+  // Final checkout action handler for Cash or non-SDK flow
   const handleFinalCheckout = async (paymentStatusText = 'Pending') => {
     if (!customerName.trim() || !customerPhone.trim()) {
       Alert.alert('Incomplete Fields', 'Please provide your name and phone number.');
@@ -142,37 +141,35 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     fetchPickupLocation();
   }, []);
 
-  // Load standard PayPal JS SDK dynamically on Web with error tracking
+  // Load standard PayPal JS SDK dynamically on Web
   useEffect(() => {
     if (Platform.OS !== 'web') return;
 
-    const clientId = 'BAARoya-d5jvDgZnul81zlpCxLemLlZg46j5q2vm1SFrUwl5OQxfISaYhl_grQvFCTI0Mcpd92ifh-xc8';
+    // Cleaned client ID supplied by user
+    const clientId = 'BAARoYa-d5jvDgZnuL81zIpCxLemLljZg46j5q2vm1SFrUwl5OQxflSaYhI_grQvFCTI0Mcpd92ifh-xc8';
     const scriptId = 'paypal-sdk-standard';
     let script = document.getElementById(scriptId) as HTMLScriptElement;
 
     if (!script) {
       script = document.createElement('script');
       script.id = scriptId;
-      script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=EUR`;
+      script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=EUR&intent=capture`;
       script.async = true;
       script.onload = () => setIsSdkReady(true);
       script.onerror = () => {
-        console.warn('PayPal script failed to load (400 Bad Request or network block). Enabling direct checkout fallback.');
-        setSdkLoadFailed(true);
+        console.error('Failed to load PayPal SDK script. Check client ID validity.');
       };
       document.body.appendChild(script);
     } else {
       if ((window as any).paypal) {
         setIsSdkReady(true);
-      } else {
-        setSdkLoadFailed(true);
       }
     }
   }, []);
 
   // Render standard PayPal Buttons when container and SDK are ready
   useEffect(() => {
-    if (Platform.OS !== 'web' || paymentMethod !== 'card' || !isSdkReady || sdkLoadFailed) return;
+    if (Platform.OS !== 'web' || paymentMethod !== 'card' || !isSdkReady) return;
 
     let isMounted = true;
     const renderPayPalButtons = () => {
@@ -233,7 +230,6 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         }
       } catch (error) {
         console.error('Error rendering standard PayPal buttons:', error);
-        setSdkLoadFailed(true);
       }
     };
 
@@ -242,7 +238,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     return () => {
       isMounted = false;
     };
-  }, [isSdkReady, paymentMethod, finalTotal, sdkLoadFailed]);
+  }, [isSdkReady, paymentMethod, finalTotal]);
 
   const handleApplyCoupon = () => {
     const trimmedCode = couponInput.trim().toUpperCase();
@@ -301,23 +297,23 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         </View>
 
         <Text style={styles.label}>Full Name</Text>
-        <TextInput style={styles.input} placeholder="Jane Doe" placeholderTextColor="#9ca3af" value={customerName} onChangeText={setCustomerName} />
+        <TextInput style={styles.input} placeholder="Jane Doe" placeholderTextColor="#64748b" value={customerName} onChangeText={setCustomerName} />
 
         <Text style={styles.label}>Phone Number</Text>
-        <TextInput style={styles.input} placeholder="+34 600 000 000" placeholderTextColor="#9ca3af" keyboardType="phone-pad" value={customerPhone} onChangeText={setCustomerPhone} />
+        <TextInput style={styles.input} placeholder="+34 600 000 000" placeholderTextColor="#64748b" keyboardType="phone-pad" value={customerPhone} onChangeText={setCustomerPhone} />
 
         {fulfillmentType === 'delivery' ? (
           <>
             <Text style={styles.label}>Delivery Street Address</Text>
-            <TextInput style={styles.input} placeholder="Calle San Jose" placeholderTextColor="#9ca3af" value={customerAddress} onChangeText={setCustomerAddress} />
+            <TextInput style={styles.input} placeholder="Calle San Jose" placeholderTextColor="#64748b" value={customerAddress} onChangeText={setCustomerAddress} />
 
             <Text style={styles.label}>City / Postal Code</Text>
-            <TextInput style={styles.input} placeholder="Madrid, 87952" placeholderTextColor="#9ca3af" value={customerCity} onChangeText={setCustomerCity} />
+            <TextInput style={styles.input} placeholder="Madrid, 87952" placeholderTextColor="#64748b" value={customerCity} onChangeText={setCustomerCity} />
           </>
         ) : (
           <View style={styles.pickupBox}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: '#0f172a', marginBottom: 4 }}>📍 Selected Pickup Location:</Text>
-            <Text style={{ fontSize: 12, color: '#475569', lineHeight: 18 }}>{pickupAddress}</Text>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#f8fafc', marginBottom: 4 }}>📍 Selected Pickup Location:</Text>
+            <Text style={{ fontSize: 12, color: '#94a3b8', lineHeight: 18 }}>{pickupAddress}</Text>
           </View>
         )}
 
@@ -326,11 +322,11 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         {appliedCoupon ? (
           <View style={styles.appliedCouponRow}>
             <View>
-              <Text style={{ fontSize: 13, fontWeight: '800', color: '#10b981' }}>{appliedCoupon.code} Applied</Text>
-              <Text style={{ fontSize: 11, color: '#64748b' }}>{appliedCoupon.discountPercent}% discount active</Text>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#34d399' }}>{appliedCoupon.code} Applied</Text>
+              <Text style={{ fontSize: 11, color: '#94a3b8' }}>{appliedCoupon.discountPercent}% discount active</Text>
             </View>
             <TouchableOpacity onPress={handleRemoveCoupon}>
-              <Text style={{ color: '#ef4444', fontWeight: 'bold', fontSize: 13 }}>Remove</Text>
+              <Text style={{ color: '#f87171', fontWeight: 'bold', fontSize: 13 }}>Remove</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -338,7 +334,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
             <TextInput
               style={[styles.input, { flex: 1, height: 42, marginBottom: 0 }]}
               placeholder="Enter coupon code"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor="#64748b"
               autoCapitalize="characters"
               value={couponInput}
               onChangeText={setCouponInput}
@@ -352,22 +348,22 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         {/* Pricing Summary Box */}
         <View style={styles.sumBox}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-            <Text style={{ color: '#64748b', fontSize: 13 }}>Subtotal</Text>
-            <Text style={{ color: '#0f172a', fontWeight: '600', fontSize: 13 }}>€{basketSubtotal.toFixed(2)}</Text>
+            <Text style={{ color: '#94a3b8', fontSize: 13 }}>Subtotal</Text>
+            <Text style={{ color: '#f8fafc', fontWeight: '600', fontSize: 13 }}>€{basketSubtotal.toFixed(2)}</Text>
           </View>
 
           {appliedCoupon && (
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-              <Text style={{ color: '#10b981', fontSize: 13, fontWeight: '700' }}>Discount ({appliedCoupon.code})</Text>
-              <Text style={{ color: '#10b981', fontWeight: '700', fontSize: 13 }}>-€{discountAmount.toFixed(2)}</Text>
+              <Text style={{ color: '#34d399', fontSize: 13, fontWeight: '700' }}>Discount ({appliedCoupon.code})</Text>
+              <Text style={{ color: '#34d399', fontWeight: '700', fontSize: 13 }}>-€{discountAmount.toFixed(2)}</Text>
             </View>
           )}
 
-          <View style={{ height: 1, backgroundColor: '#e2e8f0', marginVertical: 8 }} />
+          <View style={{ height: 1, backgroundColor: '#334155', marginVertical: 8 }} />
 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: '#0f172a', fontWeight: '700' }}>Total Amount</Text>
-            <Text style={{ fontWeight: '900', color: '#d97706', fontSize: 18 }}>€{finalTotal.toFixed(2)}</Text>
+            <Text style={{ color: '#f8fafc', fontWeight: '700' }}>Total Amount</Text>
+            <Text style={{ fontWeight: '900', color: '#fbbf24', fontSize: 18 }}>€{finalTotal.toFixed(2)}</Text>
           </View>
         </View>
 
@@ -379,29 +375,33 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
           </TouchableOpacity>
         </View>
 
-        {/* PayPal Buttons container (Web) or fallback buttons */}
-        {paymentMethod === 'card' && Platform.OS === 'web' && !sdkLoadFailed ? (
+        {/* PayPal Buttons container (Web) or standard Place Order button for Cash */}
+        {paymentMethod === 'card' && Platform.OS === 'web' ? (
           <View style={{ marginTop: 16, zIndex: 0 }}>
+            {!isSdkReady && (
+              <View style={{ padding: 12, alignItems: 'center' }}>
+                <ActivityIndicator color="#fbbf24" />
+                <Text style={{ color: '#94a3b8', fontSize: 12, marginTop: 6 }}>Loading PayPal secure checkout...</Text>
+              </View>
+            )}
             <div ref={paypalButtonContainerRef} style={{ width: '100%', minHeight: 45 }} />
           </View>
         ) : (
           <TouchableOpacity 
             style={[styles.btn, { opacity: isSubmitting ? 0.7 : 1 }]} 
-            onPress={() => handleFinalCheckout(paymentMethod === 'card' ? 'Paid (Direct Card)' : 'Pending Cash')} 
+            onPress={() => handleFinalCheckout('Pending Cash')} 
             disabled={isSubmitting}
           >
             {isSubmitting ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.btnText}>
-                {paymentMethod === 'card' ? 'Complete PayPal Payment' : 'Place Order'}
-              </Text>
+              <Text style={styles.btnText}>Place Order (Cash)</Text>
             )}
           </TouchableOpacity>
         )}
 
         <TouchableOpacity onPress={onBackToBasket} style={{ marginTop: 14, alignItems: 'center' }}>
-          <Text style={{ color: '#64748b', fontWeight: '600' }}>← Back to Basket</Text>
+          <Text style={{ color: '#94a3b8', fontWeight: '600' }}>← Back to Basket</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -410,27 +410,27 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
 
 const styles = StyleSheet.create({
   container: { padding: 16 },
-  sheet: { backgroundColor: '#ffffff', padding: 20, borderRadius: 20, borderWidth: 1, borderColor: '#f1f5f9' },
-  title: { fontSize: 18, fontWeight: 'bold', color: '#0f172a', marginBottom: 4 },
-  sub: { fontSize: 13, color: '#64748b', marginBottom: 16 },
-  label: { fontSize: 12, fontWeight: '700', color: '#334155', marginBottom: 6, marginTop: 12 },
-  input: { width: '100%', height: 42, paddingHorizontal: 12, borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, backgroundColor: '#f8fafc', color: '#0f172a' },
+  sheet: { backgroundColor: '#111827', padding: 20, borderRadius: 20, borderWidth: 1, borderColor: '#1f2937' },
+  title: { fontSize: 18, fontWeight: 'bold', color: '#f8fafc', marginBottom: 4 },
+  sub: { fontSize: 13, color: '#94a3b8', marginBottom: 16 },
+  label: { fontSize: 12, fontWeight: '700', color: '#cbd5e1', marginBottom: 6, marginTop: 12 },
+  input: { width: '100%', height: 42, paddingHorizontal: 12, borderWidth: 1, borderColor: '#374151', borderRadius: 8, backgroundColor: '#1f2937', color: '#f8fafc' },
   toggleRow: { flexDirection: 'row', gap: 8 },
-  toggleOption: { flex: 1, paddingVertical: 10, borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, alignItems: 'center', backgroundColor: '#f8fafc' },
-  activeToggle: { backgroundColor: '#171717', borderColor: '#171717' },
-  toggleText: { fontSize: 12, fontWeight: '600', color: '#475569' },
-  activeToggleText: { color: '#ffffff' },
-  pickupBox: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 8, marginTop: 12, borderWidth: 1, borderColor: '#e2e8f0' },
+  toggleOption: { flex: 1, paddingVertical: 10, borderWidth: 1, borderColor: '#374151', borderRadius: 8, alignItems: 'center', backgroundColor: '#1f2937' },
+  activeToggle: { backgroundColor: '#fbbf24', borderColor: '#fbbf24' },
+  toggleText: { fontSize: 12, fontWeight: '600', color: '#94a3b8' },
+  activeToggleText: { color: '#111827', fontWeight: '800' },
+  pickupBox: { backgroundColor: '#1f2937', padding: 12, borderRadius: 8, marginTop: 12, borderWidth: 1, borderColor: '#374151' },
 
   couponInputRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 4 },
-  applyCouponBtn: { backgroundColor: '#171717', height: 42, paddingHorizontal: 16, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  applyCouponBtnText: { color: '#ffffff', fontWeight: '800', fontSize: 13 },
-  appliedCouponRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f0fdf4', padding: 12, borderRadius: '8px' as any, borderWidth: 1, borderColor: '#bbf7d0', marginTop: 4 },
+  applyCouponBtn: { backgroundColor: '#374151', height: 42, paddingHorizontal: 16, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  applyCouponBtnText: { color: '#f8fafc', fontWeight: '800', fontSize: 13 },
+  appliedCouponRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#064e3b', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#059669', marginTop: 4 },
 
-  sumBox: { backgroundColor: '#f8fafc', padding: 14, borderRadius: 12, marginTop: 16, borderWidth: 1, borderColor: '#e2e8f0' },
+  sumBox: { backgroundColor: '#1f2937', padding: 14, borderRadius: 12, marginTop: 16, borderWidth: 1, borderColor: '#374151' },
   termsNoticeContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: 14, alignItems: 'center' },
-  termsNoticeText: { fontSize: 12, color: '#64748b' },
-  termsLinkText: { fontSize: 12, color: '#d97706', fontWeight: '700', textDecorationLine: 'underline' },
-  btn: { width: '100%', backgroundColor: '#171717', borderRadius: 12, height: 48, justifyContent: 'center', alignItems: 'center', marginTop: 16 },
+  termsNoticeText: { fontSize: 12, color: '#94a3b8' },
+  termsLinkText: { fontSize: 12, color: '#fbbf24', fontWeight: '700', textDecorationLine: 'underline' },
+  btn: { width: '100%', backgroundColor: '#2563eb', borderRadius: 12, height: 48, justifyContent: 'center', alignItems: 'center', marginTop: 16 },
   btnText: { color: '#fff', fontWeight: '700', fontSize: 14 }
 });
