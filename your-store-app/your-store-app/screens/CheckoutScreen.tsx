@@ -129,7 +129,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     fetchPickupLocation();
   }, []);
 
-  // Load standard PayPal JS SDK dynamically on Web with optimized inline settings
+  // Load standard PayPal JS SDK dynamically on Web using your client ID
   useEffect(() => {
     if (Platform.OS !== 'web') return;
 
@@ -140,12 +140,11 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     if (!script) {
       script = document.createElement('script');
       script.id = scriptId;
-      // Added components and parameters to enforce inline embedded behavior
       script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=EUR&intent=capture&commit=true&components=buttons`;
       script.async = true;
       script.onload = () => setIsSdkReady(true);
       script.onerror = () => {
-        console.error('Failed to load PayPal SDK script. Check client ID validity.');
+        console.error('Failed to load PayPal SDK script.');
       };
       document.body.appendChild(script);
     } else {
@@ -155,7 +154,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     }
   }, []);
 
-  // Render standard PayPal Buttons with forced modal presentation configuration
+  // Render standard PayPal Buttons with direct inline processing
   useEffect(() => {
     if (Platform.OS !== 'web' || paymentMethod !== 'card' || !isSdkReady) return;
 
@@ -173,11 +172,16 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
               shape: 'rect',
               label: 'paypal'
             },
-            // Forces the PayPal web SDK to attempt an in-page modal iframe overlay instead of spawning an external tab
-            experience: {
-              presentationMode: 'modal'
-            },
             createOrder: (_data: any, actions: any) => {
+              if (!customerName.trim() || !customerPhone.trim()) {
+                Alert.alert('Incomplete Fields', 'Please provide your name and phone number before paying.');
+                throw new Error('Missing customer details');
+              }
+              if (fulfillmentType === 'delivery' && (!customerAddress.trim() || !customerCity.trim())) {
+                Alert.alert('Address Missing', 'Please provide your delivery address and city before paying.');
+                throw new Error('Missing delivery details');
+              }
+
               return actions.order.create({
                 purchase_units: [
                   {
@@ -192,15 +196,12 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
               if (!isMounted) return;
               try {
                 setIsSubmitting(true);
-                
-                // Complete capture directly on the client side
                 await actions.order.capture();
 
                 if (paypalButtonContainerRef.current) {
                   paypalButtonContainerRef.current.innerHTML = '<p style="color: #34d399; text-align: center; font-weight: bold; padding: 10px;">Payment Approved! Finalizing order...</p>';
                 }
 
-                await storage.setItem('@store_payment_success_v2', 'true');
                 await handleFinalCheckout('Paid (PayPal Verified)');
               } catch (err: any) {
                 console.error('Approve processing error:', err);
@@ -215,7 +216,8 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
             onError: (err: any) => {
               console.error('PayPal Buttons Error:', err);
               if (isMounted) {
-                handleFinalCheckout('Paid (PayPal Verified)');
+                Alert.alert('Payment Error', 'An error occurred during PayPal processing.');
+                setIsSubmitting(false);
               }
             }
           }).render(paypalButtonContainerRef.current);
@@ -230,7 +232,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     return () => {
       isMounted = false;
     };
-  }, [isSdkReady, paymentMethod, finalTotal]);
+  }, [isSdkReady, paymentMethod, finalTotal, customerName, customerPhone, customerAddress, customerCity, fulfillmentType]);
 
   const handleApplyCoupon = () => {
     const trimmedCode = couponInput.trim().toUpperCase();
