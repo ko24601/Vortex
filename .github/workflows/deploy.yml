@@ -1,0 +1,42 @@
+name: Build & Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: your-store-app/your-store-app/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: your-store-app/your-store-app
+
+      - name: Build web app
+        run: npm run build:web
+        working-directory: your-store-app/your-store-app
+
+      - name: Add .nojekyll
+        run: touch your-store-app/your-store-app/dist/.nojekyll
+
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: your-store-app/your-store-app/dist
+          branch: gh-pages
+          clean: true

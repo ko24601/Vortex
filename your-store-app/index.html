@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#071b2c">
+<link rel="manifest" href="manifest.json">
+<title>Your Store</title>
+<style>
+:root{--navy:#071b2c;--ink:#102235;--line:#dce5ec;--bg:#f5f7f9;--white:#fff}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}
+.app{max-width:520px;margin:auto;min-height:100vh;background:var(--bg)}
+header{background:var(--navy);color:white;padding:22px 18px 18px;position:sticky;top:0;z-index:3}
+h1{font-size:24px;margin:0 0 14px}.search{width:100%;padding:12px 14px;border-radius:12px;border:0;font-size:15px}
+main{padding:16px 14px 96px}.chips{display:flex;gap:8px;overflow:auto;margin-bottom:14px}.chip{border:1px solid var(--line);background:white;border-radius:999px;padding:8px 13px;white-space:nowrap}.chip.active{background:var(--navy);color:#fff}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.card{background:#fff;border-radius:16px;overflow:hidden;border:1px solid var(--line);box-shadow:0 2px 8px #0000000b}.card img{width:100%;height:180px;object-fit:cover}.pad{padding:11px}.name{font-weight:700;font-size:14px;line-height:1.25}.meta{font-size:12px;color:#657585;margin:5px 0}.price{font-weight:800;margin-top:7px}
+button{font:inherit;cursor:pointer}.primary{width:100%;background:var(--navy);color:white;border:0;border-radius:12px;padding:13px;font-weight:700}.secondary{width:100%;background:white;color:var(--navy);border:1px solid var(--navy);border-radius:12px;padding:12px;font-weight:700}
+.add{position:fixed;right:calc(50% - 246px);bottom:74px;border:0;border-radius:999px;background:var(--navy);color:#fff;padding:13px 16px;box-shadow:0 8px 22px #0003}
+@media(max-width:520px){.add{right:16px}}
+nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(520px,100%);background:#fff;border-top:1px solid var(--line);display:flex;justify-content:space-around;padding:9px 4px calc(9px + env(safe-area-inset-bottom));z-index:4}
+nav button{border:0;background:none;color:#6a7885;font-size:12px}.navactive{color:var(--navy)!important;font-weight:800}
+.panel{position:fixed;inset:0;background:#0006;z-index:10;display:none;align-items:flex-end}.sheet{background:#fff;width:min(520px,100%);margin:auto;border-radius:22px 22px 0 0;padding:20px;max-height:90vh;overflow:auto}.sheet h2{margin-top:0}.field{margin:10px 0}.field label{display:block;font-size:12px;font-weight:700;margin-bottom:5px}.field input,.field select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px}
+.detail img{width:100%;height:300px;object-fit:cover;border-radius:16px}.row{display:flex;justify-content:space-between;align-items:center;margin:10px 0}.qty{display:flex;align-items:center;gap:12px}.qty button{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:#fff}
+.empty{padding:50px 10px;text-align:center;color:#71808c}.total{font-size:18px;font-weight:800;padding:14px 0;border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+<div class="app">
+<header><h1>Your Store</h1><input id="search" class="search" placeholder="Search products..."></header>
+<main id="main"></main>
+<button class="add" onclick="openAdd()">＋ Add Product</button>
+<nav>
+<button class="navactive" onclick="showCatalog()">⌂<br>Catalog</button>
+<button onclick="showBasket()">🛒<br>Basket <span id="count"></span></button>
+</nav>
+</div>
+
+<div id="panel" class="panel" onclick="if(event.target.id==='panel')closePanel()"><div class="sheet" id="sheet"></div></div>
+
+<script>
+let products = [];
+let basket = JSON.parse(localStorage.getItem('basket')||'{}');
+let filter='All';
+
+async function init(){
+  products=await (await fetch('products.json')).json();
+  render();
+}
+function money(n){return '€'+n.toFixed(2).replace('.00','')}
+function save(){localStorage.setItem('basket',JSON.stringify(basket)); updateCount()}
+function updateCount(){document.getElementById('count').textContent=Object.values(basket).reduce((a,b)=>a+b,0)||''}
+function render(){
+  const q=(document.getElementById('search')?.value||'').toLowerCase();
+  const cats=['All',...new Set(products.map(p=>p.category))];
+  const shown=products.filter(p=>(filter==='All'||p.category===filter)&&p.name.toLowerCase().includes(q));
+  document.getElementById('main').innerHTML=`
+    <div class="chips">${cats.map(c=>`<button class="chip ${c===filter?'active':''}" onclick="filter='${c}';render()">${c}</button>`).join('')}</div>
+    <div class="grid">${shown.map(p=>`<article class="card" onclick="detail('${p.id}')">
+      <img src="${p.image}" alt="${p.name}">
+      <div class="pad"><div class="name">${p.name}</div><div class="meta">${p.category}${p.size&&p.size!=='—'?' · '+p.size:''}</div><div class="price">${money(p.price)}</div></div>
+    </article>`).join('')}</div>
+    ${shown.length?'':'<div class="empty">No products found.</div>'}`;
+  updateCount();
+}
+document.getElementById('search').addEventListener('input',render);
+
+function detail(id){
+ const p=products.find(x=>x.id===id);
+ document.getElementById('sheet').innerHTML=`<div class="detail">
+ <button class="secondary" onclick="closePanel()">Close</button><br><br>
+ <img src="${p.image}" alt="${p.name}">
+ <h2>${p.name}</h2><div class="meta">${p.category}${p.size&&p.size!=='—'?' · '+p.size:''}</div>
+ <h2>${money(p.price)}</h2>
+ <p>Condition: New · In stock</p>
+ <button class="primary" onclick="add('${p.id}');closePanel()">Add to Basket</button>
+ </div>`;
+ openPanel();
+}
+function add(id){basket[id]=(basket[id]||0)+1;save()}
+function showCatalog(){render();window.scrollTo(0,0)}
+function showBasket(){
+ const items=Object.entries(basket).map(([id,qty])=>({p:products.find(x=>x.id===id),qty})).filter(x=>x.p);
+ const total=items.reduce((s,x)=>s+x.p.price*x.qty,0);
+ document.getElementById('main').innerHTML=`<h2>Basket</h2>${items.length?items.map(x=>`
+ <div class="card" style="margin-bottom:10px"><div class="row" style="padding:10px">
+ <div style="display:flex;gap:10px;align-items:center"><img src="${x.p.image}" style="width:70px;height:70px;object-fit:cover;border-radius:10px"><div><b>${x.p.name}</b><div>${money(x.p.price)}</div></div></div>
+ <div class="qty"><button onclick="changeQty('${x.p.id}',-1)">−</button><b>${x.qty}</b><button onclick="changeQty('${x.p.id}',1)">+</button></div></div></div>`).join(''):`<div class="empty">Your basket is empty.</div>`}
+ <div class="total">Total <span style="float:right">${money(total)}</span></div>
+ ${items.length?'<button class="primary" onclick="alert(\\'Payment is intentionally not connected yet.\\')">Continue to Checkout</button>':''}`;
+}
+function changeQty(id,d){basket[id]=(basket[id]||0)+d;if(basket[id]<=0)delete basket[id];save();showBasket()}
+function openAdd(){
+ document.getElementById('sheet').innerHTML=`<h2>Add Product</h2>
+ <div class="field"><label>Product name</label><input id="pn" placeholder="e.g. New sneakers"></div>
+ <div class="field"><label>Category</label><select id="pc"><option>Shoes</option><option>Beauty & Hair</option><option>Clothes</option><option>Accessories</option><option>Other</option></select></div>
+ <div class="field"><label>Price (€)</label><input id="pp" type="number" value="200" step="0.01"></div>
+ <div class="field"><label>Photo</label><input id="pi" type="file" accept="image/*"></div>
+ <button class="primary" onclick="saveProduct()">Save Product</button>`;
+ openPanel();
+}
+function saveProduct(){
+ const name=document.getElementById('pn').value.trim(); const price=Number(document.getElementById('pp').value||200);
+ if(!name){alert('Please enter a product name.');return}
+ const file=document.getElementById('pi').files[0];
+ const finish=(src)=>{products.unshift({id:'p'+Date.now(),name,category:document.getElementById('pc').value,price,image:src||'assets/lv-sneakers.jpeg',size:'—'});closePanel();render()}
+ if(file){const r=new FileReader();r.onload=()=>finish(r.result);r.readAsDataURL(file)} else finish();
+}
+function openPanel(){document.getElementById('panel').style.display='flex'}
+function closePanel(){document.getElementById('panel').style.display='none'}
+init();
+</script>
+</body></html>

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "lv-sneakers",
+    "name": "Louis Vuitton Sneakers",
+    "category": "Shoes",
+    "price": 200,
+    "image": "assets/lv-sneakers.jpeg",
+    "size": "\u2014"
+  },
+  {
+    "id": "nike-air-jordan",
+    "name": "Nike Air Jordan 1",
+    "category": "Shoes",
+    "price": 200,
+    "image": "assets/nike-air-jordan.jpeg",
+    "size": "US 9.5"
+  },
+  {
+    "id": "dyson-airstrait",
+    "name": "Dyson Airstrait",
+    "category": "Beauty & Hair",
+    "price": 200,
+    "image": "assets/dyson-airstrait.jpeg",
+    "size": "\u2014"
+  }
+]
