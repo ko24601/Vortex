@@ -285,10 +285,31 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
                     ],
                   });
                 }}
-                onApprove={(data, actions) => {
-                  return actions.order!.capture().then((details) => {
-                    handleFinalCheckout();
-                  });
+                onApprove={async (data, actions) => {
+                  try {
+                    setIsSubmitting(true);
+                    // Capture the payment client-side first
+                    await actions.order!.capture();
+                    // Then verify server-side via Firebase Cloud Function
+                    const verifyRes = await fetch(
+                      'https://us-central1-dads-ee515.cloudfunctions.net/verifyPayPalPayment',
+                      {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ orderID: data.orderID }),
+                      }
+                    );
+                    const verifyData = await verifyRes.json();
+                    if (verifyData.verified) {
+                      await handleFinalCheckout();
+                    } else {
+                      Alert.alert('Payment Error', 'Payment could not be verified. Please contact support.');
+                    }
+                  } catch (err) {
+                    Alert.alert('Error', 'Something went wrong after payment. Please contact support.');
+                  } finally {
+                    setIsSubmitting(false);
+                  }
                 }}
               />
             </PayPalScriptProvider>
