@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
   iconBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#1f1f1f', justifyContent: 'center', alignItems: 'center' },
   iconBtnText: { color: '#ffffff', fontSize: 14, fontWeight: 'bold' },
   imageContainer: { width: '100%', height: 260, borderRadius: 16, overflow: 'hidden', backgroundColor: '#1f1f1f', marginBottom: 16, position: 'relative' },
-  productImage: { width: width - 32, height: 260 },
+  productImage: { height: 260 },
   dotsContainer: { position: 'absolute', bottom: 12, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.4)' },
   activeDot: { backgroundColor: '#ffffff', width: 16 },

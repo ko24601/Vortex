@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, StatusBar, Animated, FlatList, Image, Dimensions, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, View, StatusBar, Animated, FlatList, Image, Dimensions, TouchableOpacity, Modal, Platform, Linking } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { storage } from './utils/storage';
 import { auth, db } from './firebase';
@@ -58,6 +58,11 @@ function MainApp({ onLeaveSplash }: MainAppProps) {
 
   // Modal visibility state
   const [notificationsVisible, setNotificationsVisible] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
+
+  // PWA Install prompt state
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
 
   // Toast state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -72,6 +77,35 @@ function MainApp({ onLeaveSplash }: MainAppProps) {
 
   // Hidden admin tap counter
   const [logoTapCount, setLogoTapCount] = useState(0);
+
+  // Listen for PWA install prompt (web only)
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    // Check if already installed as standalone
+    const isInstalled = window.matchMedia?.('(display-mode: standalone)')?.matches
+      || (window.navigator as any)?.standalone === true;
+    setIsStandalone(isInstalled);
+
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstallPWA = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        showToast('App installed! 🎉');
+        setIsStandalone(true);
+      }
+      setDeferredPrompt(null);
+    }
+  };
 
   useEffect(() => {
     loadLocalData();
@@ -300,7 +334,7 @@ function MainApp({ onLeaveSplash }: MainAppProps) {
             style={styles.settingsHeaderIcon}
             onPress={() => setNotificationsVisible(true)}
           >
-            <Ionicons name="notifications-outline" size={18} color="#ffffff" />
+            <Text style={{ fontSize: 16 }}>🔔</Text>
           </TouchableOpacity>
 
           {/* Account / Settings Header Button */}
@@ -309,6 +343,14 @@ function MainApp({ onLeaveSplash }: MainAppProps) {
             onPress={() => setCurrentScreen(user ? 'account' : 'auth')}
           >
             <Text style={{ fontSize: 16 }}>{user ? '👤' : '🔐'}</Text>
+          </TouchableOpacity>
+
+          {/* Hamburger Menu Button */}
+          <TouchableOpacity
+            style={styles.settingsHeaderIcon}
+            onPress={() => setMenuVisible(true)}
+          >
+            <Text style={{ fontSize: 20, color: '#ffffff' }}>☰</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -459,67 +501,81 @@ function MainApp({ onLeaveSplash }: MainAppProps) {
         onClose={() => setNotificationsVisible(false)}
       />
 
-      {/* Safe Area Bottom Navigation Bar */}
-      {currentScreen !== 'confirmation' && currentScreen !== 'checkout' && (
-        <View style={[styles.navBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-          <TouchableOpacity
-            style={styles.navItem}
-            activeOpacity={0.7}
-            onPress={() => setCurrentScreen('home')}
-          >
-            <Text style={styles.navIcon}>🏠</Text>
-            <Text style={[styles.navText, currentScreen === 'home' && styles.navTextActive]}>Shop</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.navItem}
-            activeOpacity={0.7}
-            onPress={() => setCurrentScreen('catalog')}
-          >
-            <Text style={styles.navIcon}>📖</Text>
-            <Text style={[styles.navText, currentScreen === 'catalog' && styles.navTextActive]}>Catalog</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.navItem}
-            activeOpacity={0.7}
-            onPress={() => setCurrentScreen('basket')}
-          >
-            <View style={{ position: 'relative' }}>
-              <Text style={styles.navIcon}>🛍️</Text>
-              {totalBasketCount > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{totalBasketCount}</Text>
-                </View>
-              )}
+      {/* Full Screen Burger Menu Modal */}
+      <Modal visible={menuVisible} animationType="fade" transparent={true} onRequestClose={() => setMenuVisible(false)}>
+        <View style={styles.menuOverlay}>
+          <View style={[styles.menuContent, { paddingTop: Math.max(insets.top, 20) }]}>
+            <View style={styles.menuHeader}>
+              <Text style={styles.menuTitle}>Menu</Text>
+              <TouchableOpacity onPress={() => setMenuVisible(false)}>
+                <Text style={{ fontSize: 24, color: '#ffffff' }}>✕</Text>
+              </TouchableOpacity>
             </View>
-            <Text style={[styles.navText, currentScreen === 'basket' && styles.navTextActive]}>Basket</Text>
-          </TouchableOpacity>
 
-          {/* DYNAMIC ADMIN NAV TAB: Appears automatically when user is logged in & isAdminUser is true */}
-          {user && isAdminUser && (
-            <TouchableOpacity
-              style={styles.navItem}
-              activeOpacity={0.7}
-              onPress={() => setCurrentScreen('admin')}
-            >
-              <Text style={styles.navIcon}>⚙️</Text>
-              <Text style={[styles.navText, currentScreen === 'admin' && styles.navTextActive]}>Admin</Text>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setCurrentScreen('home'); setMenuVisible(false); }}>
+              <Text style={styles.menuItemIcon}>🏠</Text>
+              <Text style={[styles.menuItemText, currentScreen === 'home' && styles.menuItemTextActive]}>Shop</Text>
             </TouchableOpacity>
-          )}
 
-          <TouchableOpacity
-            style={styles.navItem}
-            activeOpacity={0.7}
-            onPress={() => setCurrentScreen(user ? 'account' : 'auth')}
-          >
-            <Text style={styles.navIcon}>👤</Text>
-            <Text style={[styles.navText, (currentScreen === 'account' || currentScreen === 'auth' || currentScreen === 'settings') && styles.navTextActive]}>
-              {user ? 'Account' : 'Sign In'}
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setCurrentScreen('catalog'); setMenuVisible(false); }}>
+              <Text style={styles.menuItemIcon}>📖</Text>
+              <Text style={[styles.menuItemText, currentScreen === 'catalog' && styles.menuItemTextActive]}>Catalog</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setCurrentScreen('basket'); setMenuVisible(false); }}>
+              <View style={{ position: 'relative' }}>
+                <Text style={styles.menuItemIcon}>🛍️</Text>
+                {totalBasketCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{totalBasketCount}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.menuItemText, currentScreen === 'basket' && styles.menuItemTextActive]}>Basket</Text>
+            </TouchableOpacity>
+
+            {user && isAdminUser && (
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setCurrentScreen('admin'); setMenuVisible(false); }}>
+                <Text style={styles.menuItemIcon}>⚙️</Text>
+                <Text style={[styles.menuItemText, currentScreen === 'admin' && styles.menuItemTextActive]}>Admin</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setCurrentScreen(user ? 'account' : 'auth'); setMenuVisible(false); }}>
+              <Text style={styles.menuItemIcon}>👤</Text>
+              <Text style={[styles.menuItemText, (currentScreen === 'account' || currentScreen === 'auth' || currentScreen === 'settings') && styles.menuItemTextActive]}>
+                {user ? 'Account' : 'Sign In'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Install App Section */}
+            {Platform.OS === 'web' && !isStandalone && (
+              <View style={styles.installSection}>
+                <View style={styles.installDivider} />
+                <Text style={styles.installLabel}>GET THE APP</Text>
+
+                {deferredPrompt ? (
+                  <TouchableOpacity style={styles.installButton} onPress={() => { handleInstallPWA(); setMenuVisible(false); }} testID="action-btn">
+                    <Text style={styles.installButtonIcon}>📲</Text>
+                    <Text style={styles.installButtonText}>Install App</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <>
+                    <TouchableOpacity style={styles.installButton} onPress={() => { Linking.openURL('https://apps.apple.com'); setMenuVisible(false); }} testID="action-btn">
+                      <Text style={styles.installButtonIcon}>🍎</Text>
+                      <Text style={styles.installButtonText}>Download for iOS</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.installButton, { marginTop: 10 }]} onPress={() => { Linking.openURL('https://play.google.com'); setMenuVisible(false); }} testID="action-btn">
+                      <Text style={styles.installButtonIcon}>🤖</Text>
+                      <Text style={styles.installButtonText}>Download for Android</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            )}
+          </View>
         </View>
-      )}
+      </Modal>
     </View>
   );
 }
@@ -550,10 +606,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#0a0a0a',
     ...Platform.select({
       web: {
-        maxWidth: 720,
+        maxWidth: 768,
         width: '100%',
         marginHorizontal: 'auto',
         minHeight: '100vh',
+        backgroundColor: '#121214',
+        boxShadow: '0px 0px 40px rgba(0,0,0,0.8)',
+        borderLeftWidth: 1,
+        borderRightWidth: 1,
+        borderColor: '#1e1e1e',
       }
     })
   },
@@ -575,23 +636,36 @@ const styles = StyleSheet.create({
   },
   toastText: { color: '#ffffff', fontWeight: '800', fontSize: 13, letterSpacing: 0.5 },
   header: {
-    paddingBottom: 14,
-    paddingHorizontal: 20,
+    paddingBottom: 16,
+    paddingHorizontal: 24,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#171717',
+    backgroundColor: '#121214',
     borderBottomWidth: 1,
-    borderColor: '#262626'
+    borderColor: 'rgba(255,255,255,0.05)',
+    ...Platform.select({
+      web: {
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+        backgroundColor: 'rgba(18, 18, 20, 0.65)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        boxShadow: '0 4px 30px rgba(0,0,0,0.5)',
+      }
+    })
   },
-  headerTitle: { fontSize: 22, fontWeight: '900', color: '#ffffff', letterSpacing: 2 },
+  headerTitle: { fontSize: 24, fontWeight: '900', color: '#ffffff', letterSpacing: 2 },
   settingsHeaderIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#262626',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.05)',
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
+    marginLeft: 12,
+    ...Platform.select({ web: { cursor: 'pointer' } })
   },
   screenContainer: { flex: 1 },
 
@@ -599,10 +673,22 @@ const styles = StyleSheet.create({
   catalogHeaderRow: { marginBottom: 16 },
   catalogTitle: { fontSize: 20, fontWeight: '900', color: '#ffffff' },
   catalogSubtitle: { fontSize: 12, color: '#737373', fontWeight: '600', marginTop: 2 },
-  gridRow: { justifyContent: 'space-between', marginBottom: 16 },
-  gridCard: { width: '48%', backgroundColor: '#171717', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#262626' },
-  gridImage: { width: '100%', height: 140, backgroundColor: '#262626' },
-  gridInfo: { padding: 10 },
+  gridRow: { justifyContent: 'space-between', marginBottom: 20 },
+  gridCard: { 
+    width: '48%', 
+    backgroundColor: '#1e1e20', 
+    borderRadius: 20, 
+    overflow: 'hidden', 
+    borderWidth: 1, 
+    borderColor: '#2c2c2e',
+    ...Platform.select({
+      web: {
+        boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+      }
+    })
+  },
+  gridImage: { width: '100%', height: 160, backgroundColor: '#262626' },
+  gridInfo: { padding: 12 },
   gridBrand: { color: '#d97706', fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
   gridName: { color: '#ffffff', fontSize: 13, fontWeight: '800', marginVertical: 2 },
   gridPrice: { color: '#ffffff', fontSize: 14, fontWeight: '900' },
@@ -612,19 +698,64 @@ const styles = StyleSheet.create({
   emptyCatalogContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyCatalogText: { color: '#a3a3a3', fontSize: 14, fontWeight: '700' },
 
-  navBar: {
-    backgroundColor: '#171717',
-    borderTopWidth: 1,
-    borderColor: '#262626',
-    flexDirection: 'row',
-    justifyContent: 'around',
-    alignItems: 'center',
-    paddingTop: 10,
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    ...Platform.select({
+      web: {
+        backdropFilter: 'blur(4px)',
+      }
+    })
   },
-  navItem: { alignItems: 'center', justifyContent: 'center', flex: 1 },
-  navIcon: { fontSize: 18, marginBottom: 2 },
-  navText: { fontSize: 10, fontWeight: '600', color: '#737373' },
-  navTextActive: { color: '#ffffff', fontWeight: '800' },
+  menuContent: {
+    backgroundColor: '#171717',
+    width: 280,
+    height: '100%',
+    padding: 30,
+    borderLeftWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    ...Platform.select({
+      web: {
+        backgroundColor: 'rgba(18, 18, 20, 0.75)',
+        backdropFilter: 'blur(30px)',
+        WebkitBackdropFilter: 'blur(30px)',
+        boxShadow: '-10px 0 40px rgba(0,0,0,0.8)',
+      }
+    })
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  menuTitle: {
+    color: '#ffffff',
+    fontSize: 24,
+    fontWeight: '900',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 30,
+    paddingVertical: 8,
+    ...Platform.select({ web: { cursor: 'pointer' } })
+  },
+  menuItemIcon: {
+    fontSize: 26,
+    marginRight: 16,
+  },
+  menuItemText: {
+    color: '#a3a3a3',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  menuItemTextActive: {
+    color: '#ffffff',
+    fontWeight: '800',
+  },
   badge: {
     position: 'absolute',
     right: -10,
@@ -637,5 +768,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 4
   },
-  badgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900' }
+  badgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },
+
+  // Install App Section
+  installSection: {
+    marginTop: 'auto',
+    paddingTop: 20,
+  },
+  installDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginBottom: 20,
+  },
+  installLabel: {
+    color: '#737373',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 2,
+    marginBottom: 16,
+  },
+  installButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  installButtonIcon: {
+    fontSize: 20,
+    marginRight: 12,
+  },
+  installButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
 });

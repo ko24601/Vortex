@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
+import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { db } from '../firebase';
 import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
 import { Product, Coupon } from '../App';
@@ -166,7 +167,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
             style={[styles.toggleOption, paymentMethod === 'card' && styles.activeToggle]}
             onPress={() => setPaymentMethod('card')}
           >
-            <Text style={[styles.toggleText, paymentMethod === 'card' && styles.activeToggleText]}>💳 Card / Online</Text>
+            <Text style={[styles.toggleText, paymentMethod === 'card' && styles.activeToggleText]}>💳 Pay with PayPal</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.toggleOption, paymentMethod === 'cash' && styles.activeToggle]}
@@ -255,9 +256,48 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={[styles.btn, { opacity: isSubmitting ? 0.7 : 1 }]} onPress={handleFinalCheckout} disabled={isSubmitting}>
-          {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Place Order</Text>}
-        </TouchableOpacity>
+        {paymentMethod === 'card' && Platform.OS === 'web' ? (
+          <View style={{ marginTop: 16, zIndex: 0 }}>
+            <PayPalScriptProvider options={{ "clientId": "test", currency: "EUR" }}>
+              <PayPalButtons 
+                style={{ layout: "vertical", color: "black", shape: "rect" }}
+                onClick={(data, actions) => {
+                  if (!customerName.trim() || !customerPhone.trim()) {
+                    Alert.alert('Incomplete Fields', 'Please provide your name and phone number.');
+                    return actions.reject();
+                  }
+                  if (fulfillmentType === 'delivery' && (!customerAddress.trim() || !customerCity.trim())) {
+                    Alert.alert('Address Missing', 'Please provide your delivery address and city.');
+                    return actions.reject();
+                  }
+                  return actions.resolve();
+                }}
+                createOrder={(data, actions) => {
+                  return actions.order.create({
+                    intent: "CAPTURE",
+                    purchase_units: [
+                      {
+                        amount: {
+                          currency_code: "EUR",
+                          value: finalTotal.toFixed(2),
+                        },
+                      },
+                    ],
+                  });
+                }}
+                onApprove={(data, actions) => {
+                  return actions.order!.capture().then((details) => {
+                    handleFinalCheckout();
+                  });
+                }}
+              />
+            </PayPalScriptProvider>
+          </View>
+        ) : (
+          <TouchableOpacity style={[styles.btn, { opacity: isSubmitting ? 0.7 : 1 }]} onPress={handleFinalCheckout} disabled={isSubmitting}>
+            {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Place Order</Text>}
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity onPress={onBackToBasket} style={{ marginTop: 14, alignItems: 'center' }}>
           <Text style={{ color: '#64748b', fontWeight: '600' }}>← Back to Basket</Text>
