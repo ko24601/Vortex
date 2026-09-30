@@ -258,7 +258,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
 
         {paymentMethod === 'card' && Platform.OS === 'web' ? (
           <View style={{ marginTop: 16, zIndex: 0 }}>
-            <PayPalScriptProvider options={{ "clientId": "test", currency: "EUR" }}>
+            <PayPalScriptProvider options={{ "clientId": "BAAajxUiXpVegAq_zM9DhOUrGq2TE28Xizd_lnsxu26OD7x1NXkiqbLmI_6DRUVmwpLUE6o7Ab9pdOZEKg", currency: "EUR" }}>
               <PayPalButtons 
                 style={{ layout: "vertical", color: "black", shape: "rect" }}
                 onClick={(data, actions) => {
