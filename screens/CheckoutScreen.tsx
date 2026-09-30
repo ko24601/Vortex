@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
+import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { db } from '../firebase';
 import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
+import { storage } from '../utils/storage';
 import { Product, Coupon } from '../App';
 
 interface CheckoutScreenProps {
@@ -11,9 +13,10 @@ interface CheckoutScreenProps {
   onOrderPlaced: (refCode: string) => void;
   onBackToBasket: () => void;
   onOpenTerms: () => void;
+  user?: any;
 }
 
-export default function CheckoutScreen({ basket, products, coupons = [], onOrderPlaced, onBackToBasket, onOpenTerms }: CheckoutScreenProps) {
+export default function CheckoutScreen({ basket, products, coupons = [], onOrderPlaced, onBackToBasket, onOpenTerms, user }: CheckoutScreenProps) {
   const [fulfillmentType, setFulfillmentType] = useState<'delivery' | 'pickup'>('delivery');
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash'>('card');
   const [customerName, setCustomerName] = useState('');
@@ -24,6 +27,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
 
   // Dynamic Pickup Location State from Firestore
   const [pickupAddress, setPickupAddress] = useState('Loading pickup location...');
+  const baseUrl = `${window.location.origin}${window.location.pathname}`;
 
   // Interactive Coupon State
   const [couponInput, setCouponInput] = useState('');
@@ -44,11 +48,11 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         if (configDoc.exists() && configDoc.data().pickupAddress) {
           setPickupAddress(configDoc.data().pickupAddress);
         } else {
-          setPickupAddress('Vortex Storefront, Av. Principal 45, Roldán, Murcia.');
+          setPickupAddress('Vortex Storefront, Av. Principal 45, Madrid, Spain.');
         }
       } catch (error) {
         console.error('Error fetching pickup location:', error);
-        setPickupAddress('Vortex Storefront, Av. Principal 45, Roldán, Murcia.');
+        setPickupAddress('Vortex Storefront, Av. Principal 45, Madrid, Spain.');
       }
     };
 
@@ -115,6 +119,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         paymentStatus: paymentMethod === 'card' ? 'Paid (Simulated)' : 'Pending',
         couponApplied: appliedCoupon ? appliedCoupon.code : null,
         discountPercent: discountPercent,
+        userId: user?.uid || null, // Add userId if user is logged in
         customer: {
           name: customerName.trim(),
           phone: customerPhone.trim(),
@@ -136,6 +141,18 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Helper function for fetch with timeout
+  const fetchWithTimeout = async (url, options, timeoutMs = 10000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
   };
 
   return (
@@ -166,7 +183,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
             style={[styles.toggleOption, paymentMethod === 'card' && styles.activeToggle]}
             onPress={() => setPaymentMethod('card')}
           >
-            <Text style={[styles.toggleText, paymentMethod === 'card' && styles.activeToggleText]}>💳 Card / Online</Text>
+            <Text style={[styles.toggleText, paymentMethod === 'card' && styles.activeToggleText]}>💳 Pay with PayPal</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.toggleOption, paymentMethod === 'cash' && styles.activeToggle]}
@@ -185,10 +202,10 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         {fulfillmentType === 'delivery' ? (
           <>
             <Text style={styles.label}>Delivery Street Address</Text>
-            <TextInput style={styles.input} placeholder="Calle Mayor 12" placeholderTextColor="#9ca3af" value={customerAddress} onChangeText={setCustomerAddress} />
+            <TextInput style={styles.input} placeholder="Calle San Jose" placeholderTextColor="#9ca3af" value={customerAddress} onChangeText={setCustomerAddress} />
 
             <Text style={styles.label}>City / Postal Code</Text>
-            <TextInput style={styles.input} placeholder="Roldán, Murcia 30709" placeholderTextColor="#9ca3af" value={customerCity} onChangeText={setCustomerCity} />
+            <TextInput style={styles.input} placeholder="Madird, 87952" placeholderTextColor="#9ca3af" value={customerCity} onChangeText={setCustomerCity} />
           </>
         ) : (
           <View style={styles.pickupBox}>
@@ -255,9 +272,140 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={[styles.btn, { opacity: isSubmitting ? 0.7 : 1 }]} onPress={handleFinalCheckout} disabled={isSubmitting}>
-          {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Place Order</Text>}
-        </TouchableOpacity>
+        {paymentMethod === 'card' && Platform.OS === 'web' ? (
+          <View style={{ marginTop: 16, zIndex: 0 }}>
+            <PayPalScriptProvider options={{ "clientId": "BAAajxUiXpVegAq_zM9DhOUrGq2TE28Xizd_lnsxu26OD7x1NXkiqbLmI_6DRUVmwpLUE6o7Ab9pdOZEKg", currency: "EUR" }}>
+              <PayPalButtons
+                style={{ layout: "vertical", color: "black", shape: "rect" }}
+                onClick={(data, actions) => {
+                  if (!customerName.trim() || !customerPhone.trim()) {
+                    Alert.alert('Incomplete Fields', 'Please provide your name and phone number.');
+                    return actions.reject();
+                  }
+                  if (fulfillmentType === 'delivery' && (!customerAddress.trim() || !customerCity.trim())) {
+                    Alert.alert('Address Missing', 'Please provide your delivery address and city.');
+                    return actions.reject();
+                  }
+                  return actions.resolve();
+                }}
+                createOrder={(data, actions) => {
+                  // Build item list for PayPal so the buyer can see exactly what they ordered
+                  const paypalItems = Object.entries(basket).map(([id, qty]) => {
+                    const prod = products.find(p => p.id === id);
+                    return {
+                      name: prod ? prod.name : 'Item',
+                      unit_amount: {
+                        currency_code: 'EUR',
+                        value: prod ? prod.price.toFixed(2) : '0.00',
+                      },
+                      quantity: String(qty),
+                    };
+                  });
+
+                  // If a discount is applied, add it as a negative line (discount)
+                  const itemsSubtotal = paypalItems.reduce(
+                    (sum, item) => sum + parseFloat(item.unit_amount.value) * parseInt(item.quantity),
+                    0
+                  );
+
+                  // Build shipping address for PayPal if delivery
+                  const shippingAddress = fulfillmentType === 'delivery'
+                    ? {
+                      name: { full_name: customerName.trim() },
+                      address: {
+                        address_line_1: customerAddress.trim(),
+                        admin_area_2: customerCity.trim(),
+                        country_code: 'ES',
+                      },
+                      phone_number: { national_number: customerPhone.trim() }
+                    }
+                    : undefined;
+
+                  return actions.order.create({
+                    intent: 'CAPTURE',
+                    application_context: {
+                      brand_name: 'VORTEX',
+                      return_url: baseUrl,
+                      cancel_url: baseUrl,
+                      shipping_preference: fulfillmentType === 'delivery' ? 'SET_PROVIDED_ADDRESS' : 'NO_SHIPPING',
+                      user_action: 'PAY_NOW',
+                    },
+                    purchase_units: [
+                      {
+                        description: fulfillmentType === 'delivery'
+                          ? `Delivery to: ${customerAddress.trim()}, ${customerCity.trim()}`
+                          : `Store Pickup — ${pickupAddress}`,
+                        items: paypalItems,
+                        amount: {
+                          currency_code: 'EUR',
+                          value: finalTotal.toFixed(2),
+                          breakdown: {
+                            item_total: {
+                              currency_code: 'EUR',
+                              value: itemsSubtotal.toFixed(2),
+                            },
+                            discount: {
+                              currency_code: 'EUR',
+                              value: discountAmount.toFixed(2),
+                            },
+                          },
+                        },
+                        ...(shippingAddress ? { shipping: shippingAddress } : {}),
+                      },
+                    ],
+                  });
+                }}
+                onApprove={async (data, actions) => {
+                  try {
+                    setIsSubmitting(true);
+                    // Capture the payment client-side
+                    await actions.order!.capture();
+
+                    // Verify server-side via Firebase Cloud Function with timeout
+                    const verifyRes = await fetchWithTimeout(
+                      'https://verifypaypalpayment-n7mesbuj3q-uc.a.run.app',
+                      {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ orderID: data.orderID }),
+                      },
+                      10000 // 10 seconds timeout
+                    );
+                    const verifyData = await verifyRes.json();
+                    if (verifyData.verified) {
+                      // Set payment success flag and clear basket
+                      await storage.setItem('@store_payment_success_v2', 'true');
+                      await storage.setItem('@store_basket_v2', JSON.stringify({}));
+                      await handleFinalCheckout();
+                    } else {
+                      Alert.alert('Payment Error', 'Payment could not be verified. Please contact support.');
+                    }
+                  } catch (err) {
+                    // Handle timeout or other errors
+                    if (err.name === 'TimeoutError') {
+                      Alert.alert(
+                        'Payment Verification Timeout',
+                        'We are verifying your payment. Please check your PayPal account for confirmation. Your payment may still be processing.'
+                      );
+                      // Even if verification times out, we proceed optimistically since payment was captured
+                      await storage.setItem('@store_payment_success_v2', 'true');
+                      await storage.setItem('@store_basket_v2', JSON.stringify({}));
+                      await handleFinalCheckout();
+                    } else {
+                      Alert.alert('Error', 'Something went wrong after payment. Please contact support.');
+                    }
+                  } finally {
+                    setIsSubmitting(false);
+                  }
+                }}
+              />
+            </PayPalScriptProvider>
+          </View>
+        ) : (
+          <TouchableOpacity style={[styles.btn, { opacity: isSubmitting ? 0.7 : 1 }]} onPress={handleFinalCheckout} disabled={isSubmitting}>
+            {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Place Order</Text>}
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity onPress={onBackToBasket} style={{ marginTop: 14, alignItems: 'center' }}>
           <Text style={{ color: '#64748b', fontWeight: '600' }}>← Back to Basket</Text>
@@ -280,7 +428,7 @@ const styles = StyleSheet.create({
   toggleText: { fontSize: 12, fontWeight: '600', color: '#475569' },
   activeToggleText: { color: '#ffffff' },
   pickupBox: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 8, marginTop: 12, borderWidth: 1, borderColor: '#e2e8f0' },
-  
+
   couponInputRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 4 },
   applyCouponBtn: { backgroundColor: '#171717', height: 42, paddingHorizontal: 16, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   applyCouponBtnText: { color: '#ffffff', fontWeight: '800', fontSize: 13 },
