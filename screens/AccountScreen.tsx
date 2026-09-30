@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { db } from '../firebase';
+import { auth, db } from '../firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
 interface AccountScreenProps {
-  user: any;
   isAdminUser?: boolean;
   onSignOut: () => void;
   onNavigateSettings?: () => void;
@@ -25,15 +24,29 @@ export default function AccountScreen({
   const [userOrders, setUserOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
 
+  // Fetch current user from Firebase auth
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Fetch orders specific to the logged-in user in real-time
   useEffect(() => {
-    if (!user || !user.uid) {
+    if (authLoading) {
+      setLoadingOrders(true);
+      return;
+    }
+
+    if (!currentUser || !currentUser.uid) {
       setUserOrders([]);
       setLoadingOrders(false);
       return;
     }
 
-    const q = query(collection(db, 'orders'), where('userId', '==', user.uid));
+    const q = query(collection(db, 'orders'), where('userId', '==', currentUser.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       orders.sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -45,7 +58,7 @@ export default function AccountScreen({
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [currentUser, authLoading]);
 
   return (
     <View style={styles.container}>
@@ -94,6 +107,9 @@ export default function AccountScreen({
               ) : (
                 userOrders.map((order) => {
                   const status = order.status || order.deliveryStatus || 'Processing';
+                  const customer = order.customer || {};
+                  const orderDate = order.createdAt ? new Date(order.createdAt) : null;
+
                   return (
                     <View key={order.id} style={styles.orderCard}>
                       <View style={styles.orderCardHeader}>
@@ -105,18 +121,63 @@ export default function AccountScreen({
                         </View>
                       </View>
 
-                      <Text style={styles.orderMeta}>Fulfillment: <Text style={{ color: '#ffffff', textTransform: 'capitalize' }}>{order.fulfillment || 'Delivery'}</Text></Text>
-                      <Text style={styles.orderMeta}>Total: <Text style={{ color: '#d97706', fontWeight: '800' }}>€{order.total?.toFixed(2) || '0.00'}</Text></Text>
+                      {/* Customer Information */}
+                      <Text style={styles.orderMeta}>
+                        Customer: {customer.name || 'N/A'}
+                      </Text>
+                      <Text style={styles.orderMeta}>
+                        Phone: {customer.phone || 'N/A'}
+                      </Text>
 
-                      {order.items && order.items.length > 0 && (
-                        <View style={styles.itemsList}>
-                          {order.items.map((item: any, idx: number) => (
-                            <Text key={idx} style={styles.itemRowText} numberOfLines={1}>
-                              • {item.productName} (x{item.quantity})
+                      {/* Order Details */}
+                      <Text style={styles.orderMeta}>Fulfillment: <Text style={{ color: '#ffffff', textTransform: 'capitalize' }}>{order.fulfillment || 'Delivery'}</Text></Text>
+                      <Text style={styles.orderMeta}>Payment: <Text style={{ color: '#ffffff', textTransform: 'capitalize' }}>{order.paymentMethod === 'card' ? '💳 Card (PayPal)' : '💵 Cash'}</Text></Text>
+
+                      {/* Pricing Summary */}
+                      <View style={{ marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#2e2e2e' }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <Text style={{ color: '#a3a3a3', fontSize: 11 }}>Subtotal</Text>
+                          <Text style={{ fontWeight: '600', fontSize: 11 }}>€{order.subtotal?.toFixed(2) || '0.00'}</Text>
+                        </View>
+                        {order.discount && order.discount > 0 ? (
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <Text style={{ color: '#10b981', fontSize: 11 }}>Discount ({order.couponApplied || 'N/A'}%)</Text>
+                            <Text style={{ color: '#10b981', fontWeight: '600', fontSize: 11 }}>
+                              -€{order.discount.toFixed(2)}
                             </Text>
+                          </View>
+                        ) : null}
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <Text style={{ color: '#ffffff', fontWeight: '600', fontSize: 11 }}>Total</Text>
+                          <Text style={{ fontWeight: '800', fontSize: 12, color: '#d97706' }}>
+                            €{order.total?.toFixed(2) || '0.00'}
+                          </Text>
+                        </View>
+                        {orderDate && (
+                          <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 4 }}>
+                            <Text style={{ color: '#888888', fontSize: 10 }}>
+                              {orderDate.toLocaleDateString()} {orderDate.toLocaleTimeString()}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Items List */}
+                      {order.items && order.items.length > 0 && (
+                        <View style={{ marginTop: 8 }}>
+                          <Text style={{ fontWeight: '600', marginBottom: 4 }}>Items:</Text>
+                          {order.items.map((item: any, idx: number) => (
+                            <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 }}>
+                              <Text style={{ flex: 1, fontSize: 10, color: '#cccccc' }}>
+                                • {item.productName} (x{item.quantity})
+                              </Text>
+                              <Text style={{ fontSize: 10, color: '#a3a3a3', textAlign: 'right' }}>
+                                €{(item.price || 0).toFixed(2)}
+                              </Text>
+                            </View>
                           ))}
                         </View>
-                      )}
+                        )}
                     </View>
                   );
                 })

@@ -38,7 +38,8 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "backgroundColor": "#0a0a0a"
     },
     "plugins": [
       [
@@ -54,6 +55,9 @@
         "projectId": "f5a1e2db-768a-436f-9380-db2127f4e0e4"
       }
     },
-    "owner": "gtr24601"
+    "owner": "gtr24601",
+    "experiments": {
+      "baseUrl": "/Vortex"
+    }
   }
 }

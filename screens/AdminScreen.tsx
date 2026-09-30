@@ -412,11 +412,17 @@ export default function AdminScreen({
                     <Text style={styles.label}>Price (€) *</Text>
                     <TextInput
                       style={styles.input}
-                      placeholder="200"
+                      placeholder="199.99"
                       placeholderTextColor="#9ca3af"
-                      keyboardType="numeric"
+                      keyboardType="decimal-pad"
                       value={adminPrice}
-                      onChangeText={setAdminPrice}
+                      onChangeText={(text) => {
+                        // Allow digits and a single decimal point
+                        const cleaned = text.replace(/[^0-9.]/g, '');
+                        const parts = cleaned.split('.');
+                        if (parts.length > 2) return; // reject second decimal point
+                        setAdminPrice(cleaned);
+                      }}
                     />
                   </View>
                   <View style={{ width: 10 }} />
@@ -602,6 +608,7 @@ export default function AdminScreen({
                 ) : (
                   orders.map((item) => {
                     const currentStatus = item.status || item.deliveryStatus || 'Pending';
+                    const customer = item.customer || {};
                     return (
                       <View key={item.id} style={styles.orderCard}>
                         <View style={styles.orderHeader}>
@@ -610,9 +617,91 @@ export default function AdminScreen({
                             {currentStatus}
                           </Text>
                         </View>
-                        <Text style={styles.orderMeta}>User: {item.userId || item.email || 'Guest'}</Text>
-                        <Text style={styles.orderMeta}>Address: {item.shippingAddress || item.address || 'N/A'}</Text>
-                        <Text style={styles.orderMeta}>Total: €{item.totalAmount?.toFixed(2) || item.total?.toFixed(2) || '0.00'}</Text>
+
+                        {/* Customer Information */}
+                        <Text style={styles.orderMeta}>
+                          Customer: {customer.name || 'N/A'}
+                        </Text>
+                        <Text style={styles.orderMeta}>
+                          Phone: {customer.phone || 'N/A'}
+                        </Text>
+                        {fulfillmentType === 'delivery' ? (
+                          <>
+                            <Text style={styles.orderMeta}>
+                              Address: {customer.address || 'N/A'}
+                            </Text>
+                            <Text style={styles.orderMeta}>
+                              City: {customer.city || 'N/A'}
+                            </Text>
+                          </>
+                        ) : (
+                          <Text style={styles.orderMeta}>
+                            Pickup Location: {customer.address || 'N/A'}
+                          </>
+                        )}
+
+                        {/* Order Details */}
+                        <Text style={[styles.label, { marginTop: 8, marginBottom: 4 }]}>
+                          Order Details:
+                        </Text>
+                        {item.items && Array.isArray(item.items) ? (
+                          item.items.map((orderItem, index) => (
+                            <View key={index} style={styles.orderItem}>
+                              <Text style={{ fontWeight: '600' }}>
+                                ×{orderItem.quantity} {orderItem.productName || 'Unknown Item'}
+                              </Text>
+                              <Text style={{ color: '#64748b', fontSize: 11 }}>
+                                €{orderItem.price?.toFixed(2) || '0.00'} each
+                              </Text>
+                            </View>
+                          ))
+                        ) : (
+                          <Text style={{ color: '#64748b', fontStyle: 'italic' }}>
+                            No item details available
+                          </>
+                        )}
+
+                        {/* Payment and Fulfillment Info */}
+                        <View style={{ flexDirection: 'row', marginTop: 8, gap: 12 }}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ color: '#64748b', fontSize: 11 }}>
+                              Payment Method:
+                            </Text>
+                            <Text style={{ fontWeight: '600' }}>
+                              {item.paymentMethod === 'card' ? '💳 Card (PayPal)' : '💵 Cash'}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ color: '#64748b', fontSize: 11 }}>
+                              Fulfillment:
+                            </Text>
+                            <Text style={{ fontWeight: '600' }}>
+                              {item.fulfillment === 'delivery' ? '🚚 Delivery' : '🏬 Pickup'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* Pricing Summary */}
+                        <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#e2e8f0' }}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <Text style={{ color: '#64748b', fontSize: 12 }}>Subtotal</Text>
+                            <Text style={{ fontWeight: '600', fontSize: 12 }}>€{item.subtotal?.toFixed(2) || '0.00'}</Text>
+                          </View>
+                          {item.discount && item.discount > 0 ? (
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                              <Text style={{ color: '#10b981', fontSize: 12 }}>Discount ({item.couponApplied || 'N/A'}%)</Text>
+                              <Text style={{ color: '#10b981', fontWeight: '600', fontSize: 12 }}>
+                                -€{item.discount.toFixed(2)}
+                              </Text>
+                            </View>
+                          ) : null}
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <Text style={{ color: '#0f172a', fontWeight: '600', fontSize: 12 }}>Total</Text>
+                            <Text style={{ fontWeight: '700', fontSize: 14, color: '#d97706' }}>
+                              €{item.total?.toFixed(2) || '0.00'}
+                            </Text>
+                          </View>
+                        </View>
 
                         <Text style={[styles.label, { marginTop: 8 }]}>Update Delivery Status:</Text>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>

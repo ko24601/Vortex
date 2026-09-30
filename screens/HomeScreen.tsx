@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, Image, Dimensions, Modal } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, Image, Dimensions, Modal, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Product } from '../App';
 import ProductDetailScreen from './ProductDetailScreen';
@@ -73,7 +73,7 @@ export default function HomeScreen({
             <View style={styles.bannerBadge}><Text style={styles.bannerBadgeText}>NEW DROP</Text></View>
             <Text style={styles.bannerTitle}>Autumn Collection 2026</Text>
             <Text style={styles.bannerSub}>Discover premium luxury designer essentials.</Text>
-            <TouchableOpacity style={styles.bannerBtn} activeOpacity={0.8} onPress={() => setActiveCategory('All')}>
+            <TouchableOpacity style={styles.bannerBtn} activeOpacity={0.8} onPress={() => setActiveCategory('All')} testID="action-btn">
               <Text style={styles.bannerBtnText}>Shop Now →</Text>
             </TouchableOpacity>
           </View>
@@ -117,6 +117,7 @@ export default function HomeScreen({
                   style={styles.card} 
                   activeOpacity={0.85} 
                   onPress={() => setSelectedProductModal(p)}
+                  testID="product-card"
                 >
                   <View style={{ position: 'relative' }}>
                     <Image source={{ uri: p.image }} style={styles.cardImage} />
@@ -124,6 +125,7 @@ export default function HomeScreen({
                       style={styles.favBadge} 
                       activeOpacity={0.7} 
                       onPress={() => onToggleFavorite(p.id)}
+                      testID="action-btn"
                     >
                       <Text style={{ fontSize: 12 }}>{isFav ? '❤️' : '🤍'}</Text>
                     </TouchableOpacity>
@@ -137,6 +139,7 @@ export default function HomeScreen({
                         style={styles.addQuickBtn} 
                         activeOpacity={0.7}
                         onPress={() => onSelectProduct(p)}
+                        testID="action-btn"
                       >
                         <Text style={styles.addQuickText}>+</Text>
                       </TouchableOpacity>
@@ -179,7 +182,22 @@ const styles = StyleSheet.create({
   searchWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#171717', borderRadius: 12, paddingHorizontal: 12, borderWidth: 1, borderColor: '#262626', height: 44 },
   searchBox: { flex: 1, height: 40, fontSize: 14, color: '#ffffff' },
   scrollBody: { padding: 16, paddingBottom: 40 },
-  banner: { backgroundColor: '#171717', borderRadius: 20, padding: 20, marginBottom: 24, flexDirection: 'row', overflow: 'hidden', borderWidth: 1, borderColor: '#262626' },
+  banner: { 
+    backgroundColor: '#121214', 
+    borderRadius: 24, 
+    padding: 30, 
+    marginBottom: 30, 
+    flexDirection: 'row', 
+    overflow: 'hidden', 
+    borderWidth: 1, 
+    borderColor: 'rgba(255,255,255,0.05)',
+    ...Platform.select({
+      web: {
+        boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+        backgroundImage: 'linear-gradient(135deg, #1c1c1e 0%, #0a0a0a 100%)',
+      }
+    })
+  },
   bannerBadge: { backgroundColor: '#d97706', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginBottom: 8 },
   bannerBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
   bannerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 4 },
@@ -195,9 +213,23 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13, color: '#a3a3a3', fontWeight: '600' },
   activeChipText: { color: '#000000' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  card: { width: (width - 44) / 2, backgroundColor: '#171717', borderRadius: 16, marginBottom: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#262626' },
-  cardImage: { width: '100%', height: 150, resizeMode: 'cover', backgroundColor: '#262626' },
-  favBadge: { position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 12, width: 26, height: 26, justifyContent: 'center', alignItems: 'center' },
+  card: { 
+    width: (width - 44) / 2, 
+    backgroundColor: '#121214', 
+    borderRadius: 16, 
+    marginBottom: 20, 
+    overflow: 'hidden', 
+    borderWidth: 1, 
+    borderColor: '#2c2c2e',
+    ...Platform.select({
+      web: {
+        boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+        cursor: 'pointer'
+      }
+    })
+  },
+  cardImage: { width: '100%', height: 160, resizeMode: 'cover', backgroundColor: '#262626' },
+  favBadge: { position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 14, width: 28, height: 28, justifyContent: 'center', alignItems: 'center' },
   cardPad: { padding: 12 },
   cardName: { fontWeight: '700', fontSize: 13, color: '#ffffff', marginBottom: 2 },
   cardMeta: { fontSize: 11, color: '#a3a3a3', marginBottom: 8 },
