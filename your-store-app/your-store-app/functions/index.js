@@ -104,7 +104,7 @@ exports.createDynamicCheckout = onRequest(
       }
 
       try {
-        const stripe = new Stripe(stripeSecret.value());
+        const stripe = new Stripe(stripeSecret.value().trim());
         const {items, successUrl, cancelUrl} = req.body;
 
         if (!items || !Array.isArray(items) || items.length === 0) {
@@ -134,7 +134,6 @@ exports.createDynamicCheckout = onRequest(
         const session = await stripe.checkout.sessions.create({
           ui_mode: "hosted_page",
           mode: "payment",
-          payment_method_collection: "always",
           billing_address_collection: "auto",
           phone_number_collection: {enabled: true},
           allow_promotion_codes: true,
@@ -145,8 +144,11 @@ exports.createDynamicCheckout = onRequest(
 
         return res.status(200).json({url: session.url});
       } catch (error) {
-        console.error("Stripe Checkout Error:", error.message);
-        return res.status(500).json({error: error.message});
+        console.error("Stripe Checkout Error:", error);
+        return res.status(500).json({
+          error: error.message,
+          stack: error.stack,
+        });
       }
     }
 );

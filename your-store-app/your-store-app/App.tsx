@@ -161,14 +161,27 @@ function MainApp({ onLeaveSplash }: MainAppProps) {
     };
   }, []);
 
-  // Check for payment success from PayPal redirect
+  // Check for payment success from Stripe or PayPal redirect
   useEffect(() => {
     (async () => {
       try {
+        if (Platform.OS === 'web') {
+          const urlParams = new URLSearchParams(window.location.search);
+          const isSuccess = urlParams.get('success');
+          const sessionId = urlParams.get('session_id');
+
+          if (isSuccess === 'true' && sessionId) {
+            await saveBasket({});
+            setCurrentScreen('confirmation');
+            window.history.replaceState({}, document.title, window.location.pathname);
+            return;
+          }
+        }
+
         const paymentSuccess = await storage.getItem('@store_payment_success_v2');
         if (paymentSuccess === 'true') {
           await storage.removeItem('@store_payment_success_v2');
-          await storage.setItem('@store_basket_v2', JSON.stringify({}));
+          await saveBasket({});
           setCurrentScreen('confirmation');
         }
       } catch (e) {
