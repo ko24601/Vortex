@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
 import { storage } from '../utils/storage';
 import { Product, Coupon } from '../App';
@@ -13,9 +13,10 @@ interface CheckoutScreenProps {
   onOrderPlaced: (refCode: string) => void;
   onBackToBasket: () => void;
   onOpenTerms: () => void;
+  user?: any;
 }
 
-export default function CheckoutScreen({ basket, products, coupons = [], onOrderPlaced, onBackToBasket, onOpenTerms }: CheckoutScreenProps) {
+export default function CheckoutScreen({ basket, products, coupons = [], onOrderPlaced, onBackToBasket, onOpenTerms, user }: CheckoutScreenProps) {
   const [fulfillmentType, setFulfillmentType] = useState<'delivery' | 'pickup'>('delivery');
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash'>('card');
   const [customerName, setCustomerName] = useState('');
@@ -23,6 +24,18 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
   const [customerAddress, setCustomerAddress] = useState('');
   const [customerCity, setCustomerCity] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null | any);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Fetch current user from Firebase auth
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe;
+  })
+
 
   // Dynamic Pickup Location State from Firestore
   const [pickupAddress, setPickupAddress] = useState('Loading pickup location...');
@@ -47,11 +60,11 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         if (configDoc.exists() && configDoc.data().pickupAddress) {
           setPickupAddress(configDoc.data().pickupAddress);
         } else {
-          setPickupAddress('Vortex Storefront, Av. Principal 45, Roldán, Murcia.');
+          setPickupAddress('Vortex Storefront, Av. Principal 45, Madrid, Spain.');
         }
       } catch (error) {
         console.error('Error fetching pickup location:', error);
-        setPickupAddress('Vortex Storefront, Av. Principal 45, Roldán, Murcia.');
+        setPickupAddress('Vortex Storefront, Av. Principal 45, Madrid, Spain.');
       }
     };
 
@@ -118,6 +131,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         paymentStatus: paymentMethod === 'card' ? 'Paid (Simulated)' : 'Pending',
         couponApplied: appliedCoupon ? appliedCoupon.code : null,
         discountPercent: discountPercent,
+        userId: currentUser?.uid || null, // Add userId if user is logged in
         customer: {
           name: customerName.trim(),
           phone: customerPhone.trim(),
@@ -139,6 +153,18 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Helper function for fetch with timeout
+  const fetchWithTimeout = async (url, options, timeoutMs = 10000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
   };
 
   return (
@@ -188,10 +214,10 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         {fulfillmentType === 'delivery' ? (
           <>
             <Text style={styles.label}>Delivery Street Address</Text>
-            <TextInput style={styles.input} placeholder="Calle Mayor 12" placeholderTextColor="#9ca3af" value={customerAddress} onChangeText={setCustomerAddress} />
+            <TextInput style={styles.input} placeholder="Calle San Jose" placeholderTextColor="#9ca3af" value={customerAddress} onChangeText={setCustomerAddress} />
 
             <Text style={styles.label}>City / Postal Code</Text>
-            <TextInput style={styles.input} placeholder="Roldán, Murcia 30709" placeholderTextColor="#9ca3af" value={customerCity} onChangeText={setCustomerCity} />
+            <TextInput style={styles.input} placeholder="Madird, 87952" placeholderTextColor="#9ca3af" value={customerCity} onChangeText={setCustomerCity} />
           </>
         ) : (
           <View style={styles.pickupBox}>
@@ -261,7 +287,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         {paymentMethod === 'card' && Platform.OS === 'web' ? (
           <View style={{ marginTop: 16, zIndex: 0 }}>
             <PayPalScriptProvider options={{ "clientId": "BAAajxUiXpVegAq_zM9DhOUrGq2TE28Xizd_lnsxu26OD7x1NXkiqbLmI_6DRUVmwpLUE6o7Ab9pdOZEKg", currency: "EUR" }}>
-              <PayPalButtons 
+              <PayPalButtons
                 style={{ layout: "vertical", color: "black", shape: "rect" }}
                 onClick={(data, actions) => {
                   if (!customerName.trim() || !customerPhone.trim()) {
@@ -297,14 +323,14 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
                   // Build shipping address for PayPal if delivery
                   const shippingAddress = fulfillmentType === 'delivery'
                     ? {
-                        name: { full_name: customerName.trim() },
-                        address: {
-                          address_line_1: customerAddress.trim(),
-                          admin_area_2: customerCity.trim(),
-                          country_code: 'ES',
-                        },
-                        phone_number: { national_number: customerPhone.trim() }
-                      }
+                      name: { full_name: customerName.trim() },
+                      address: {
+                        address_line_1: customerAddress.trim(),
+                        admin_area_2: customerCity.trim(),
+                        country_code: 'ES',
+                      },
+                      phone_number: { national_number: customerPhone.trim() }
+                    }
                     : undefined;
 
                   return actions.order.create({
@@ -347,26 +373,43 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
                     // Capture the payment client-side
                     await actions.order!.capture();
 
-                    // Verify server-side via Firebase Cloud Function
-                    const verifyRes = await fetch(
+                    // Verify server-side via Firebase Cloud Function with timeout
+                    const verifyRes = await fetchWithTimeout(
                       'https://verifypaypalpayment-n7mesbuj3q-uc.a.run.app',
                       {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ orderID: data.orderID }),
-                      }
+                      },
+                      10000 // 10 seconds timeout
                     );
                     const verifyData = await verifyRes.json();
                     if (verifyData.verified) {
                       // Set payment success flag and clear basket
                       await storage.setItem('@store_payment_success_v2', 'true');
                       await storage.setItem('@store_basket_v2', JSON.stringify({}));
+                      // Add delay to prevent instant redirect
+                      await new Promise(resolve => setTimeout(resolve, 4000));
                       await handleFinalCheckout();
                     } else {
-                      Alert.alert('Payment Error', 'Payment could not be verified. Please contact support.');
+                      await Alert.alert('Payment Error', 'Payment could not be verified. Please contact support.');
                     }
                   } catch (err) {
-                    Alert.alert('Error', 'Something went wrong after payment. Please contact support.');
+                    // Handle timeout or other errors
+                    if (err.name === 'TimeoutError') {
+                      Alert.alert(
+                        'Payment Verification Timeout',
+                        'We are verifying your payment. Please check your PayPal account for confirmation. Your payment may still be processing.'
+                      );
+                      // Even if verification times out, we proceed optimistically since payment was captured
+                      await storage.setItem('@store_payment_success_v2', 'true');
+                      await storage.setItem('@store_basket_v2', JSON.stringify({}));
+                      // Add delay to prevent instant redirect
+                      await new Promise(resolve => setTimeout(resolve, 4000));
+                      await handleFinalCheckout();
+                    } else {
+                      Alert.alert('Error', 'Something went wrong after payment. Please contact support.');
+                    }
                   } finally {
                     setIsSubmitting(false);
                   }
@@ -401,7 +444,7 @@ const styles = StyleSheet.create({
   toggleText: { fontSize: 12, fontWeight: '600', color: '#475569' },
   activeToggleText: { color: '#ffffff' },
   pickupBox: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 8, marginTop: 12, borderWidth: 1, borderColor: '#e2e8f0' },
-  
+
   couponInputRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 4 },
   applyCouponBtn: { backgroundColor: '#171717', height: 42, paddingHorizontal: 16, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   applyCouponBtnText: { color: '#ffffff', fontWeight: '800', fontSize: 13 },

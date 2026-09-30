@@ -9,10 +9,11 @@ import {
   Image,
   ActivityIndicator,
   Alert,
-  Switch
+  Switch,
+  Linking
 } from 'react-native';
 import { launchImageLibraryAsync } from '../utils/imagePicker';
-import { db, storage } from '../firebase';
+import { db, storage, auth } from '../firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -60,9 +61,20 @@ export default function AdminScreen({
   // Store Configuration / Pickup Location State
   const [pickupLocationInput, setPickupLocationInput] = useState('');
   const [savingLocation, setSavingLocation] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null | any);
+  const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (authLoading) {
+      setOrdersLoading(true);
+      return;
+    }
+
+    if (!currentUser || !currentUser.uid) {
+      setOrders([]);
+      setOrdersLoading(false);
+      return;
+    }
 
     // Fetch Orders in real-time
     const unsubscribeOrders = onSnapshot(
@@ -93,7 +105,7 @@ export default function AdminScreen({
     fetchStoreConfig();
 
     return () => unsubscribeOrders();
-  }, [user]);
+  }, [currentUser, authLoading]);
 
   const handleUpdateOrderStatus = async (orderId, newStatus) => {
     try {
@@ -105,6 +117,28 @@ export default function AdminScreen({
     } catch (e) {
       Alert.alert('Error', e.message);
     }
+  };
+
+  const handleDeleteOrder = async (orderId) => {
+    Alert.alert(
+      'Delete Order',
+      'Are you sure you want to delete this order? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDoc(doc(db, 'orders', orderId));
+              Alert.alert('Success', 'Order deleted successfully!');
+            } catch (e) {
+              Alert.alert('Error', e.message);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleSavePickupLocation = async () => {
@@ -280,7 +314,7 @@ export default function AdminScreen({
   return (
     <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.sheet}>
-        {!user ? (
+        {!currentUser ? (
           <>
             <Text style={styles.title}>🔒 Restricted Admin Access</Text>
             <Text style={styles.sub}>Please sign in with authorized manager credentials.</Text>
@@ -321,7 +355,7 @@ export default function AdminScreen({
                 <Text style={{ color: '#ef4444', fontWeight: 'bold' }}>Logout</Text>
               </TouchableOpacity>
             </View>
-            <Text style={styles.sub}>Connected: {user.email}</Text>
+            <Text style={styles.sub}>Connected: {currentUser?.email}</Text>
 
             {/* TAB SWITCHER */}
             <View style={styles.tabContainer}>
@@ -608,17 +642,116 @@ export default function AdminScreen({
                 ) : (
                   orders.map((item) => {
                     const currentStatus = item.status || item.deliveryStatus || 'Pending';
+                    const customer = item.customer || {};
                     return (
                       <View key={item.id} style={styles.orderCard}>
                         <View style={styles.orderHeader}>
                           <Text style={styles.orderId}>Order #{item.id.slice(0, 8)}</Text>
-                          <Text style={[styles.orderStatus, { color: currentStatus === 'Delivered' ? '#10b981' : '#d97706' }]}>
-                            {currentStatus}
-                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Text style={[styles.orderStatus, { color: currentStatus === 'Delivered' ? '#10b981' : '#d97706' }]}>
+                              {currentStatus}
+                            </Text>
+                            <TouchableOpacity onPress={() => handleDeleteOrder(item.id)}>
+                              <Text style={{ color: '#ef4444', fontWeight: 'bold', fontSize: 12, marginLeft: 8 }}>Delete</Text>
+                            </TouchableOpacity>
+                          </View>
                         </View>
-                        <Text style={styles.orderMeta}>User: {item.userId || item.email || 'Guest'}</Text>
-                        <Text style={styles.orderMeta}>Address: {item.shippingAddress || item.address || 'N/A'}</Text>
-                        <Text style={styles.orderMeta}>Total: €{item.totalAmount?.toFixed(2) || item.total?.toFixed(2) || '0.00'}</Text>
+
+                        {/* Customer Information */}
+                        <Text style={styles.orderMeta}>
+                          Customer: {customer.name || 'N/A'}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.orderMeta}
+                          onPress={() => {
+                            if (customer.phone && customer.phone !== 'N/A') {
+                              Linking.openURL(`tel:${customer.phone}`).catch(err =>
+                                console.error('Error initiating call:', err)
+                              );
+                            }
+                          }}
+                        >
+                          <Text style={{ color: '#64748b' }}>
+                            Phone: {customer.phone || 'N/A'}
+                          </Text>
+                        </TouchableOpacity>
+                        {fulfillmentType === 'delivery' ? (
+                          <>
+                            <Text style={styles.orderMeta}>
+                              Address: {customer.address || 'N/A'}
+                            </Text>
+                            <Text style={styles.orderMeta}>
+                              City: {customer.city || 'N/A'}
+                            </Text>
+                          </>
+                        ) : (
+                          <Text style={styles.orderMeta}>
+                            Pickup Location: {customer.address || 'N/A'}
+                          </>
+                        )}
+
+                        {/* Order Details */}
+                        <Text style={[styles.label, { marginTop: 8, marginBottom: 4 }]}>
+                          Order Details:
+                        </Text>
+                        {item.items && Array.isArray(item.items) ? (
+                          item.items.map((orderItem, index) => (
+                            <View key={index} style={styles.orderItem}>
+                              <Text style={{ fontWeight: '600' }}>
+                                ×{orderItem.quantity} {orderItem.productName || 'Unknown Item'}
+                              </Text>
+                              <Text style={{ color: '#64748b', fontSize: 11 }}>
+                                €{orderItem.price?.toFixed(2) || '0.00'} each
+                              </Text>
+                            </View>
+                          ))
+                        ) : (
+                          <Text style={{ color: '#64748b', fontStyle: 'italic' }}>
+                            No item details available
+                          </>
+                        )}
+
+                        {/* Payment and Fulfillment Info */}
+                        <View style={{ flexDirection: 'row', marginTop: 8, gap: 12 }}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ color: '#64748b', fontSize: 11 }}>
+                              Payment Method:
+                            </Text>
+                            <Text style={{ fontWeight: '600' }}>
+                              {item.paymentMethod === 'card' ? '💳 Card (PayPal)' : '💵 Cash'}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ color: '#64748b', fontSize: 11 }}>
+                              Fulfillment:
+                            </Text>
+                            <Text style={{ fontWeight: '600' }}>
+                              {item.fulfillment === 'delivery' ? '🚚 Delivery' : '🏬 Pickup'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* Pricing Summary */}
+                        <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#e2e8f0' }}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <Text style={{ color: '#64748b', fontSize: 12 }}>Subtotal</Text>
+                            <Text style={{ fontWeight: '600', fontSize: 12 }}>€{item.subtotal?.toFixed(2) || '0.00'}</Text>
+                          </View>
+                          {item.discount && item.discount > 0 ? (
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                              <Text style={{ color: '#10b981', fontSize: 12 }}>Discount ({item.couponApplied || 'N/A'}%)</Text>
+                              <Text style={{ color: '#10b981', fontWeight: '600', fontSize: 12 }}>
+                                -€{item.discount.toFixed(2)}
+                              </Text>
+                            </View>
+                          ) : null}
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <Text style={{ color: '#0f172a', fontWeight: '600', fontSize: 12 }}>Total</Text>
+                            <Text style={{ fontWeight: '700', fontSize: 14, color: '#d97706' }}>
+                              €{item.total?.toFixed(2) || '0.00'}
+                            </Text>
+                          </View>
+                        </View>
 
                         <Text style={[styles.label, { marginTop: 8 }]}>Update Delivery Status:</Text>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
