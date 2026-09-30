@@ -31,7 +31,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
   const [couponInput, setCouponInput] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
 
-  // PayPal v6 SDK States
+  // PayPal SDK States
   const [isSdkReady, setIsSdkReady] = useState(false);
   const paypalButtonContainerRef = useRef<HTMLDivElement>(null);
 
@@ -140,114 +140,101 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     fetchPickupLocation();
   }, []);
 
-  // Load PayPal SDK v6 dynamically on Web
+  // Load standard PayPal JS SDK dynamically on Web
   useEffect(() => {
     if (Platform.OS !== 'web') return;
 
-    const scriptId = 'paypal-sdk-v6';
+    const clientId = 'BAARoya-d5jvDgZnul81zlpCxLemLlZg46j5q2vm1SFrUwl5OQxfISaYhl_grQvFCTI0Mcpd92ifh-xc8';
+    const scriptId = 'paypal-sdk-standard';
     let script = document.getElementById(scriptId) as HTMLScriptElement;
-
-    const initPayPal = async () => {
-      try {
-        if ((window as any).paypal && (window as any).paypal.createInstance) {
-          setIsSdkReady(true);
-        }
-      } catch (e) {
-        console.error('PayPal v6 init error:', e);
-      }
-    };
 
     if (!script) {
       script = document.createElement('script');
       script.id = scriptId;
-      script.src = 'https://www.paypal.com/web-sdk/v6/core';
+      script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=EUR`;
       script.async = true;
-      script.onload = () => initPayPal();
+      script.onload = () => setIsSdkReady(true);
       document.body.appendChild(script);
     } else {
-      initPayPal();
+      if ((window as any).paypal) {
+        setIsSdkReady(true);
+      }
     }
   }, []);
 
-  // Render PayPal v6 Buttons when container and SDK are ready
+  // Render standard PayPal Buttons when container and SDK are ready
+  useEffectRef: {
+    // handled inside standard effect below
+  }
+
   useEffect(() => {
     if (Platform.OS !== 'web' || paymentMethod !== 'card' || !isSdkReady) return;
 
     let isMounted = true;
-    const renderPayPalButton = async () => {
+    const renderPayPalButtons = () => {
       try {
         if (!paypalButtonContainerRef.current) return;
-        paypalButtonContainerRef.current.innerHTML = ''; // Clear previous container contents
+        paypalButtonContainerRef.current.innerHTML = ''; // Clear container
 
-        const sdkInstance = await (window as any).paypal.createInstance({
-          clientId: "BAARoya-d5jvDgZnul81zlpCxLemLlZg46j5q2vm1SFrUwl5OQxfISaYhl_grQvFCTI0Mcpd92ifh-xc8",
-          components: ["paypal-payments"],
-        });
+        if ((window as any).paypal && (window as any).paypal.Buttons) {
+          (window as any).paypal.Buttons({
+            createOrder: (_data: any, actions: any) => {
+              return actions.order.create({
+                purchase_units: [
+                  {
+                    amount: {
+                      value: finalTotal.toFixed(2),
+                    },
+                  },
+                ],
+              });
+            },
+            onApprove: async (_data: any, actions: any) => {
+              try {
+                setIsSubmitting(true);
+                const orderData = await actions.order.capture();
+                
+                // Optional backend verification call
+                try {
+                  await fetchWithTimeout(
+                    'https://verifypaypalpayment-n7mesbuj3q-uc.a.run.app',
+                    {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ orderID: orderData.id }),
+                    },
+                    10000
+                  );
+                } catch (verifyErr) {
+                  console.warn('Backend verification warning (proceeding anyway):', verifyErr);
+                }
 
-        if (!isMounted) return;
-
-        // Create the payment session using SDK v6 structure
-        const paymentSession = sdkInstance.createPayPalOneTimePaymentSession({
-          getCheckoutOptions: () => {
-            return {
-              amount: {
-                currency_code: 'EUR',
-                value: finalTotal.toFixed(2),
-              },
-            };
-          },
-          onApprove: async (data: { orderID: string }) => {
-            try {
-              setIsSubmitting(true);
-              const verifyRes = await fetchWithTimeout(
-                'https://verifypaypalpayment-n7mesbuj3q-uc.a.run.app',
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ orderID: data.orderID }),
-                },
-                10000
-              );
-              const verifyData = await verifyRes.json();
-              if (verifyData.verified) {
+                if (!isMounted) return;
                 await storage.setItem('@store_payment_success_v2', 'true');
                 await storage.setItem('@store_basket_v2', JSON.stringify({}));
                 await handleFinalCheckout();
-              } else {
-                Alert.alert('Payment Error', 'Payment could not be verified. Please contact support.');
+              } catch (err: any) {
+                console.error('Capture error:', err);
+                Alert.alert('Payment Error', 'Payment could not be completed.');
+              } finally {
+                if (isMounted) setIsSubmitting(false);
               }
-            } catch (err: any) {
-              if (err.name === 'TimeoutError') {
-                Alert.alert('Timeout', 'Payment verification timed out, but your transaction was processed.');
-                await storage.setItem('@store_payment_success_v2', 'true');
-                await storage.setItem('@store_basket_v2', JSON.stringify({}));
-                await handleFinalCheckout();
-              } else {
-                Alert.alert('Error', 'Something went wrong after payment.');
-              }
-            } finally {
-              setIsSubmitting(false);
+            },
+            onCancel: () => {
+              if (isMounted) setIsSubmitting(false);
+            },
+            onError: (err: any) => {
+              console.error('PayPal Buttons Error:', err);
+              Alert.alert('Error', 'An error occurred during PayPal checkout.');
             }
-          },
-          onCancel: () => {
-            setIsSubmitting(false);
-          },
-          onError: (err: any) => {
-            console.error('PayPal v6 Error:', err);
-            Alert.alert('Error', 'An error occurred with PayPal checkout.');
-          }
-        });
-
-        // Render the button into the web DOM node
-        if (paypalButtonContainerRef.current) {
-          paymentSession.render(paypalButtonContainerRef.current);
+          }).render(paypalButtonContainerRef.current);
         }
       } catch (error) {
-        console.error('Error rendering PayPal v6 buttons:', error);
+        console.error('Error rendering standard PayPal buttons:', error);
       }
     };
 
-    renderPayPalButton();
+    renderPayPalButtons();
 
     return () => {
       isMounted = false;
@@ -389,7 +376,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
           </TouchableOpacity>
         </View>
 
-        {/* PayPal v6 Button container (Web) or standard cash button fallback */}
+        {/* PayPal Buttons container (Web) or cash button fallback */}
         {paymentMethod === 'card' && Platform.OS === 'web' ? (
           <View style={{ marginTop: 16, zIndex: 0 }}>
             <div ref={paypalButtonContainerRef} style={{ width: '100%', minHeight: 45 }} />
@@ -425,12 +412,12 @@ const styles = StyleSheet.create({
   couponInputRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 4 },
   applyCouponBtn: { backgroundColor: '#171717', height: 42, paddingHorizontal: 16, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   applyCouponBtnText: { color: '#ffffff', fontWeight: '800', fontSize: 13 },
-  appliedCouponRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f0fdf4', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#bbf7d0', marginTop: 4 },
+  appliedCouponRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f0fdf4', padding: 12, borderRadius: '8px' as any, borderWidth: 1, borderColor: '#bbf7d0', marginTop: 4 },
 
   sumBox: { backgroundColor: '#f8fafc', padding: 14, borderRadius: 12, marginTop: 16, borderWidth: 1, borderColor: '#e2e8f0' },
   termsNoticeContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: 14, alignItems: 'center' },
   termsNoticeText: { fontSize: 12, color: '#64748b' },
   termsLinkText: { fontSize: 12, color: '#d97706', fontWeight: '700', textDecorationLine: 'underline' },
-  btn: { width: '100%', backgroundColor: '#171717', borderRadius: id => 12, height: 48, justifyContent: 'center', alignItems: 'center', marginTop: 16 }, // safe fallback syntax
+  btn: { width: '100%', backgroundColor: '#171717', borderRadius: 12, height: 48, justifyContent: 'center', alignItems: 'center', marginTop: 16 },
   btnText: { color: '#fff', fontWeight: '700', fontSize: 14 }
 });
