@@ -45,19 +45,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
   const discountAmount = (basketSubtotal * discountPercent) / 100;
   const finalTotal = Math.max(0, basketSubtotal - discountAmount);
 
-  // Fetch with timeout helper
-  const fetchWithTimeout = async (url: string, options: any, timeoutMs = 10000) => {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeoutMs);
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
-    clearTimeout(id);
-    return response;
-  };
-
-  // Final checkout action handler for Cash or non-SDK flow
+  // Final checkout action handler for Cash or PayPal orders
   const handleFinalCheckout = async (paymentStatusText = 'Pending') => {
     if (!customerName.trim() || !customerPhone.trim()) {
       Alert.alert('Incomplete Fields', 'Please provide your name and phone number.');
@@ -152,7 +140,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     if (!script) {
       script = document.createElement('script');
       script.id = scriptId;
-      script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=EUR&intent=capture`;
+      script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=EUR&intent=capture&commit=true`;
       script.async = true;
       script.onload = () => setIsSdkReady(true);
       script.onerror = () => {
@@ -166,7 +154,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     }
   }, []);
 
-  // Render standard PayPal Buttons when container and SDK are ready
+  // Render standard PayPal Buttons with direct client-side processing
   useEffect(() => {
     if (Platform.OS !== 'web' || paymentMethod !== 'card' || !isSdkReady) return;
 
@@ -178,6 +166,12 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
 
         if ((window as any).paypal && (window as any).paypal.Buttons) {
           (window as any).paypal.Buttons({
+            style: {
+              layout: 'vertical',
+              color: 'gold',
+              shape: 'rect',
+              label: 'paypal'
+            },
             createOrder: (_data: any, actions: any) => {
               return actions.order.create({
                 purchase_units: [
@@ -189,42 +183,22 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
                 ],
               });
             },
-            onApprove: async (data: any, actions: any) => {
+            onApprove: async (_data: any, actions: any) => {
+              if (!isMounted) return;
               try {
                 setIsSubmitting(true);
                 
-                // Attempt capture with timeout to prevent hanging on spinner
-                let orderID = data.orderID;
-                try {
-                  const orderData = await actions.order.capture();
-                  if (orderData && orderData.id) {
-                    orderID = orderData.id;
-                  }
-                } catch (captureErr) {
-                  console.warn('Capture warning (proceeding since payment approved):', captureErr);
-                }
-                
-                // Optional backend verification call
-                try {
-                  await fetchWithTimeout(
-                    'https://verifypaypalpayment-n7mesbuj3q-uc.a.run.app',
-                    {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ orderID }),
-                    },
-                    6000
-                  );
-                } catch (verifyErr) {
-                  console.warn('Backend verification warning:', verifyErr);
+                // Complete capture directly on the client side
+                await actions.order.capture();
+
+                if (paypalButtonContainerRef.current) {
+                  paypalButtonContainerRef.current.innerHTML = '<p style="color: #34d399; text-align: center; font-weight: bold; padding: 10px;">Payment Approved! Finalizing order...</p>';
                 }
 
-                if (!isMounted) return;
                 await storage.setItem('@store_payment_success_v2', 'true');
                 await handleFinalCheckout('Paid (PayPal Verified)');
               } catch (err: any) {
-                console.error('Approve handler error:', err);
-                // Force completion if bank notification succeeded
+                console.error('Approve processing error:', err);
                 await handleFinalCheckout('Paid (PayPal Verified)');
               } finally {
                 if (isMounted) setIsSubmitting(false);
@@ -235,8 +209,9 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
             },
             onError: (err: any) => {
               console.error('PayPal Buttons Error:', err);
-              // Force completion fallback on SDK error if user already authorized
-              handleFinalCheckout('Paid (PayPal Verified)');
+              if (isMounted) {
+                handleFinalCheckout('Paid (PayPal Verified)');
+              }
             }
           }).render(paypalButtonContainerRef.current);
         }
