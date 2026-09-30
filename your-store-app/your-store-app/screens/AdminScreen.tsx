@@ -412,11 +412,17 @@ export default function AdminScreen({
                     <Text style={styles.label}>Price (€) *</Text>
                     <TextInput
                       style={styles.input}
-                      placeholder="200"
+                      placeholder="199.99"
                       placeholderTextColor="#9ca3af"
-                      keyboardType="numeric"
+                      keyboardType="decimal-pad"
                       value={adminPrice}
-                      onChangeText={setAdminPrice}
+                      onChangeText={(text) => {
+                        // Allow digits and a single decimal point
+                        const cleaned = text.replace(/[^0-9.]/g, '');
+                        const parts = cleaned.split('.');
+                        if (parts.length > 2) return; // reject second decimal point
+                        setAdminPrice(cleaned);
+                      }}
                     />
                   </View>
                   <View style={{ width: 10 }} />

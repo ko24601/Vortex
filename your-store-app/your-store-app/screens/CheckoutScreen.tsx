@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, Activi
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { db } from '../firebase';
 import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
+import { storage } from '../utils/storage';
 import { Product, Coupon } from '../App';
 
 interface CheckoutScreenProps {
@@ -25,6 +26,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
 
   // Dynamic Pickup Location State from Firestore
   const [pickupAddress, setPickupAddress] = useState('Loading pickup location...');
+  const baseUrl = `${window.location.origin}${window.location.pathname}`;
 
   // Interactive Coupon State
   const [couponInput, setCouponInput] = useState('');
@@ -273,14 +275,68 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
                   return actions.resolve();
                 }}
                 createOrder={(data, actions) => {
+                  // Build item list for PayPal so the buyer can see exactly what they ordered
+                  const paypalItems = Object.entries(basket).map(([id, qty]) => {
+                    const prod = products.find(p => p.id === id);
+                    return {
+                      name: prod ? prod.name : 'Item',
+                      unit_amount: {
+                        currency_code: 'EUR',
+                        value: prod ? prod.price.toFixed(2) : '0.00',
+                      },
+                      quantity: String(qty),
+                    };
+                  });
+
+                  // If a discount is applied, add it as a negative line (discount)
+                  const itemsSubtotal = paypalItems.reduce(
+                    (sum, item) => sum + parseFloat(item.unit_amount.value) * parseInt(item.quantity),
+                    0
+                  );
+
+                  // Build shipping address for PayPal if delivery
+                  const shippingAddress = fulfillmentType === 'delivery'
+                    ? {
+                        name: { full_name: customerName.trim() },
+                        address: {
+                          address_line_1: customerAddress.trim(),
+                          admin_area_2: customerCity.trim(),
+                          country_code: 'ES',
+                        },
+                        phone_number: { national_number: customerPhone.trim() }
+                      }
+                    : undefined;
+
                   return actions.order.create({
-                    intent: "CAPTURE",
+                    intent: 'CAPTURE',
+                    application_context: {
+                      brand_name: 'VORTEX',
+                      return_url: baseUrl,
+                      cancel_url: baseUrl,
+                      shipping_preference: fulfillmentType === 'delivery' ? 'SET_PROVIDED_ADDRESS' : 'NO_SHIPPING',
+                      user_action: 'PAY_NOW',
+                    },
                     purchase_units: [
                       {
+                        description: fulfillmentType === 'delivery'
+                          ? `Delivery to: ${customerAddress.trim()}, ${customerCity.trim()}`
+                          : `Store Pickup — ${pickupAddress}`,
+                        items: paypalItems,
                         amount: {
-                          currency_code: "EUR",
+                          currency_code: 'EUR',
                           value: finalTotal.toFixed(2),
+                          breakdown: {
+                            item_total: {
+                              currency_code: 'EUR',
+                              value: itemsSubtotal.toFixed(2),
+                            },
+                            discount: {
+                              currency_code: 'EUR',
+                              value: discountAmount.toFixed(2),
+                            },
+                          },
                         },
+                        ...(shippingAddress ? { shipping: shippingAddress } : {}),
                       },
                     ],
                   });
@@ -288,9 +344,10 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
                 onApprove={async (data, actions) => {
                   try {
                     setIsSubmitting(true);
-                    // Capture the payment client-side first
+                    // Capture the payment client-side
                     await actions.order!.capture();
-                    // Then verify server-side via Firebase Cloud Function
+
+                    // Verify server-side via Firebase Cloud Function
                     const verifyRes = await fetch(
                       'https://verifypaypalpayment-n7mesbuj3q-uc.a.run.app',
                       {
@@ -301,6 +358,9 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
                     );
                     const verifyData = await verifyRes.json();
                     if (verifyData.verified) {
+                      // Set payment success flag and clear basket
+                      await storage.setItem('@store_payment_success_v2', 'true');
+                      await storage.setItem('@store_basket_v2', JSON.stringify({}));
                       await handleFinalCheckout();
                     } else {
                       Alert.alert('Payment Error', 'Payment could not be verified. Please contact support.');

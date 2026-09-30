@@ -93,7 +93,7 @@ function openAdd(){
  document.getElementById('sheet').innerHTML=`<h2>Add Product</h2>
  <div class="field"><label>Product name</label><input id="pn" placeholder="e.g. New sneakers"></div>
  <div class="field"><label>Category</label><select id="pc"><option>Shoes</option><option>Beauty & Hair</option><option>Clothes</option><option>Accessories</option><option>Other</option></select></div>
- <div class="field"><label>Price (€)</label><input id="pp" type="number" value="200"></div>
+ <div class="field"><label>Price (€)</label><input id="pp" type="number" value="200" step="0.01"></div>
  <div class="field"><label>Photo</label><input id="pi" type="file" accept="image/*"></div>
  <button class="primary" onclick="saveProduct()">Save Product</button>`;
  openPanel();

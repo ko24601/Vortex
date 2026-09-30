@@ -155,6 +155,22 @@ function MainApp({ onLeaveSplash }: MainAppProps) {
     };
   }, []);
 
+  // Check for payment success from PayPal redirect
+  useEffect(() => {
+    (async () => {
+      try {
+        const paymentSuccess = await storage.getItem('@store_payment_success_v2');
+        if (paymentSuccess === 'true') {
+          await storage.removeItem('@store_payment_success_v2');
+          await storage.setItem('@store_basket_v2', JSON.stringify({}));
+          setCurrentScreen('confirmation');
+        }
+      } catch (e) {
+        console.error('Error checking payment success:', e);
+      }
+    })();
+  }, []);
+
   const loadLocalData = async () => {
     try {
       const savedBasket = await storage.getItem('@store_basket_v2');
