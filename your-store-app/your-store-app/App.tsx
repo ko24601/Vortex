@@ -104,7 +104,13 @@ function MainApp({ onLeaveSplash }: MainAppProps) {
         setIsStandalone(true);
       }
       setDeferredPrompt(null);
+    } else {
+      showToast('Tap browser menu ⠇ then "Add to Home screen"');
     }
+  };
+
+  const handleIOSInstallInstructions = () => {
+    showToast('Tap Share ⎋ then "Add to Home Screen" ➕');
   };
 
   useEffect(() => {
@@ -221,7 +227,7 @@ function MainApp({ onLeaveSplash }: MainAppProps) {
     setToastMessage(message);
     Animated.sequence([
       Animated.timing(toastAnim, { toValue: insets.top + 10, duration: 250, useNativeDriver: false }),
-      Animated.delay(2000),
+      Animated.delay(3000),
       Animated.timing(toastAnim, { toValue: -100, duration: 200, useNativeDriver: false })
     ]).start(() => setToastMessage(null));
   };
@@ -571,23 +577,23 @@ function MainApp({ onLeaveSplash }: MainAppProps) {
                 <View style={styles.installDivider} />
                 <Text style={styles.installLabel}>GET THE APP</Text>
 
-                {deferredPrompt ? (
-                  <TouchableOpacity style={styles.installButton} onPress={() => { handleInstallPWA(); setMenuVisible(false); }} testID="action-btn">
-                    <Text style={styles.installButtonIcon}>📲</Text>
-                    <Text style={styles.installButtonText}>Install App</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <>
-                    <TouchableOpacity style={styles.installButton} onPress={() => { Linking.openURL('https://apps.apple.com'); setMenuVisible(false); }} testID="action-btn">
-                      <Text style={styles.installButtonIcon}>🍎</Text>
-                      <Text style={styles.installButtonText}>Download for iOS</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.installButton, { marginTop: 10 }]} onPress={() => { Linking.openURL('https://play.google.com'); setMenuVisible(false); }} testID="action-btn">
-                      <Text style={styles.installButtonIcon}>🤖</Text>
-                      <Text style={styles.installButtonText}>Download for Android</Text>
-                    </TouchableOpacity>
-                  </>
-                )}
+                <TouchableOpacity 
+                  style={styles.installButton} 
+                  onPress={() => { handleIOSInstallInstructions(); setMenuVisible(false); }} 
+                  testID="action-btn"
+                >
+                  <Text style={styles.installButtonIcon}>🍎</Text>
+                  <Text style={styles.installButtonText}>Add to iOS Home Screen</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.installButton, { marginTop: 10 }]} 
+                  onPress={() => { handleInstallPWA(); setMenuVisible(false); }} 
+                  testID="action-btn"
+                >
+                  <Text style={styles.installButtonIcon}>🤖</Text>
+                  <Text style={styles.installButtonText}>Install App / Shortcut</Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
