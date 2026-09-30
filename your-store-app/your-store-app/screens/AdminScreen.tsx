@@ -9,11 +9,10 @@ import {
   Image,
   ActivityIndicator,
   Alert,
-  Switch,
-  Linking
+  Switch
 } from 'react-native';
 import { launchImageLibraryAsync } from '../utils/imagePicker';
-import { db, storage, auth } from '../firebase';
+import { db, storage } from '../firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -61,20 +60,9 @@ export default function AdminScreen({
   // Store Configuration / Pickup Location State
   const [pickupLocationInput, setPickupLocationInput] = useState('');
   const [savingLocation, setSavingLocation] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null | any);
-  const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
-    if (authLoading) {
-      setOrdersLoading(true);
-      return;
-    }
-
-    if (!currentUser || !currentUser.uid) {
-      setOrders([]);
-      setOrdersLoading(false);
-      return;
-    }
+    if (!user) return;
 
     // Fetch Orders in real-time
     const unsubscribeOrders = onSnapshot(
@@ -105,7 +93,7 @@ export default function AdminScreen({
     fetchStoreConfig();
 
     return () => unsubscribeOrders();
-  }, [currentUser, authLoading]);
+  }, [user]);
 
   const handleUpdateOrderStatus = async (orderId, newStatus) => {
     try {
@@ -117,28 +105,6 @@ export default function AdminScreen({
     } catch (e) {
       Alert.alert('Error', e.message);
     }
-  };
-
-  const handleDeleteOrder = async (orderId) => {
-    Alert.alert(
-      'Delete Order',
-      'Are you sure you want to delete this order? This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteDoc(doc(db, 'orders', orderId));
-              Alert.alert('Success', 'Order deleted successfully!');
-            } catch (e) {
-              Alert.alert('Error', e.message);
-            }
-          }
-        }
-      ]
-    );
   };
 
   const handleSavePickupLocation = async () => {
@@ -314,7 +280,7 @@ export default function AdminScreen({
   return (
     <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.sheet}>
-        {!currentUser ? (
+        {!user ? (
           <>
             <Text style={styles.title}>🔒 Restricted Admin Access</Text>
             <Text style={styles.sub}>Please sign in with authorized manager credentials.</Text>
@@ -355,7 +321,7 @@ export default function AdminScreen({
                 <Text style={{ color: '#ef4444', fontWeight: 'bold' }}>Logout</Text>
               </TouchableOpacity>
             </View>
-            <Text style={styles.sub}>Connected: {currentUser?.email}</Text>
+            <Text style={styles.sub}>Connected: {user.email}</Text>
 
             {/* TAB SWITCHER */}
             <View style={styles.tabContainer}>
@@ -647,35 +613,19 @@ export default function AdminScreen({
                       <View key={item.id} style={styles.orderCard}>
                         <View style={styles.orderHeader}>
                           <Text style={styles.orderId}>Order #{item.id.slice(0, 8)}</Text>
-                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Text style={[styles.orderStatus, { color: currentStatus === 'Delivered' ? '#10b981' : '#d97706' }]}>
-                              {currentStatus}
-                            </Text>
-                            <TouchableOpacity onPress={() => handleDeleteOrder(item.id)}>
-                              <Text style={{ color: '#ef4444', fontWeight: 'bold', fontSize: 12, marginLeft: 8 }}>Delete</Text>
-                            </TouchableOpacity>
-                          </View>
+                          <Text style={[styles.orderStatus, { color: currentStatus === 'Delivered' ? '#10b981' : '#d97706' }]}>
+                            {currentStatus}
+                          </Text>
                         </View>
 
                         {/* Customer Information */}
                         <Text style={styles.orderMeta}>
                           Customer: {customer.name || 'N/A'}
                         </Text>
-                        <TouchableOpacity
-                          style={styles.orderMeta}
-                          onPress={() => {
-                            if (customer.phone && customer.phone !== 'N/A') {
-                              Linking.openURL(`tel:${customer.phone}`).catch(err =>
-                                console.error('Error initiating call:', err)
-                              );
-                            }
-                          }}
-                        >
-                          <Text style={{ color: '#64748b' }}>
-                            Phone: {customer.phone || 'N/A'}
-                          </Text>
-                        </TouchableOpacity>
-                        {item.fulfillment === 'delivery' ? (
+                        <Text style={styles.orderMeta}>
+                          Phone: {customer.phone || 'N/A'}
+                        </Text>
+                        {fulfillmentType === 'delivery' ? (
                           <>
                             <Text style={styles.orderMeta}>
                               Address: {customer.address || 'N/A'}

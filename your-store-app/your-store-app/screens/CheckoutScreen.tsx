@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
 import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
-import { db, auth } from '../firebase';
+import { db } from '../firebase';
 import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
 import { storage } from '../utils/storage';
 import { Product, Coupon } from '../App';
@@ -25,22 +24,10 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
   const [customerAddress, setCustomerAddress] = useState('');
   const [customerCity, setCustomerCity] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null | any);
-  const [authLoading, setAuthLoading] = useState(true);
-
-  // Fetch current user from Firebase auth
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      setAuthLoading(false);
-    });
-    return () => unsubscribe;
-  })
-
 
   // Dynamic Pickup Location State from Firestore
   const [pickupAddress, setPickupAddress] = useState('Loading pickup location...');
-  const baseUrl = Platform.OS === 'web' ? `${window.location.origin}${window.location.pathname}` : '';
+  const baseUrl = `${window.location.origin}${window.location.pathname}`;
 
   // Interactive Coupon State
   const [couponInput, setCouponInput] = useState('');
@@ -132,7 +119,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         paymentStatus: paymentMethod === 'card' ? 'Paid (Simulated)' : 'Pending',
         couponApplied: appliedCoupon ? appliedCoupon.code : null,
         discountPercent: discountPercent,
-        userId: currentUser?.uid || null, // Add userId if user is logged in
+        userId: user?.uid || null, // Add userId if user is logged in
         customer: {
           name: customerName.trim(),
           phone: customerPhone.trim(),
@@ -218,7 +205,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
             <TextInput style={styles.input} placeholder="Calle San Jose" placeholderTextColor="#9ca3af" value={customerAddress} onChangeText={setCustomerAddress} />
 
             <Text style={styles.label}>City / Postal Code</Text>
-            <TextInput style={styles.input} placeholder="Madrid, 87952" placeholderTextColor="#9ca3af" value={customerCity} onChangeText={setCustomerCity} />
+            <TextInput style={styles.input} placeholder="Madird, 87952" placeholderTextColor="#9ca3af" value={customerCity} onChangeText={setCustomerCity} />
           </>
         ) : (
           <View style={styles.pickupBox}>
@@ -389,11 +376,9 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
                       // Set payment success flag and clear basket
                       await storage.setItem('@store_payment_success_v2', 'true');
                       await storage.setItem('@store_basket_v2', JSON.stringify({}));
-                      // Add delay to prevent instant redirect
-                      await new Promise(resolve => setTimeout(resolve, 4000));
                       await handleFinalCheckout();
                     } else {
-                      await Alert.alert('Payment Error', 'Payment could not be verified. Please contact support.');
+                      Alert.alert('Payment Error', 'Payment could not be verified. Please contact support.');
                     }
                   } catch (err) {
                     // Handle timeout or other errors
@@ -405,8 +390,6 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
                       // Even if verification times out, we proceed optimistically since payment was captured
                       await storage.setItem('@store_payment_success_v2', 'true');
                       await storage.setItem('@store_basket_v2', JSON.stringify({}));
-                      // Add delay to prevent instant redirect
-                      await new Promise(resolve => setTimeout(resolve, 4000));
                       await handleFinalCheckout();
                     } else {
                       Alert.alert('Error', 'Something went wrong after payment. Please contact support.');

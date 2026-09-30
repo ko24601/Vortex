@@ -451,6 +451,7 @@ function MainApp({ onLeaveSplash }: MainAppProps) {
           <CheckoutScreen
             basket={basket}
             products={products}
+            user={user}
             onOrderPlaced={() => {
               saveBasket({});
               setCurrentScreen('confirmation');
