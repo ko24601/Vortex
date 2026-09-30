@@ -23,8 +23,26 @@ yarn-error.*
 Thumbs.db
 *.swp
 *.orig
+*.orig.*
 .vscode/
 .idea/
 
 # Environment files
 .env*.local
+
+# Native
+.kotlin/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+*.tsbuildinfo
+
+# Metro
+.metro-health-check*
+
+# Generated native folders
+/ios
+/android
