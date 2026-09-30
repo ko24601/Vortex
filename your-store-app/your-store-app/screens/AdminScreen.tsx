@@ -625,7 +625,7 @@ export default function AdminScreen({
                         <Text style={styles.orderMeta}>
                           Phone: {customer.phone || 'N/A'}
                         </Text>
-                        {fulfillmentType === 'delivery' ? (
+                        {item.fulfillment === 'delivery' ? (
                           <>
                             <Text style={styles.orderMeta}>
                               Address: {customer.address || 'N/A'}
@@ -637,7 +637,7 @@ export default function AdminScreen({
                         ) : (
                           <Text style={styles.orderMeta}>
                             Pickup Location: {customer.address || 'N/A'}
-                          </>
+                          </Text>
                         )}
 
                         {/* Order Details */}
@@ -658,7 +658,7 @@ export default function AdminScreen({
                         ) : (
                           <Text style={{ color: '#64748b', fontStyle: 'italic' }}>
                             No item details available
-                          </>
+                          </Text>
                         )}
 
                         {/* Payment and Fulfillment Info */}
