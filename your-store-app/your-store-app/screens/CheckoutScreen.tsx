@@ -129,7 +129,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     fetchPickupLocation();
   }, []);
 
-  // Load standard PayPal JS SDK dynamically on Web
+  // Load standard PayPal JS SDK dynamically on Web with optimized inline settings
   useEffect(() => {
     if (Platform.OS !== 'web') return;
 
@@ -140,7 +140,8 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     if (!script) {
       script = document.createElement('script');
       script.id = scriptId;
-      script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=EUR&intent=capture&commit=true`;
+      // Added components and parameters to enforce inline embedded behavior
+      script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=EUR&intent=capture&commit=true&components=buttons`;
       script.async = true;
       script.onload = () => setIsSdkReady(true);
       script.onerror = () => {
@@ -154,7 +155,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     }
   }, []);
 
-  // Render standard PayPal Buttons with direct client-side processing
+  // Render standard PayPal Buttons with forced modal presentation configuration
   useEffect(() => {
     if (Platform.OS !== 'web' || paymentMethod !== 'card' || !isSdkReady) return;
 
@@ -171,6 +172,10 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
               color: 'gold',
               shape: 'rect',
               label: 'paypal'
+            },
+            // Forces the PayPal web SDK to attempt an in-page modal iframe overlay instead of spawning an external tab
+            experience: {
+              presentationMode: 'modal'
             },
             createOrder: (_data: any, actions: any) => {
               return actions.order.create({
