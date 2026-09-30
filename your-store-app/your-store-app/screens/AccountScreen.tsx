@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
 interface AccountScreenProps {
+  user?: any;
   isAdminUser?: boolean;
   onSignOut: () => void;
   onNavigateSettings?: () => void;
@@ -14,24 +16,34 @@ interface AccountScreenProps {
 }
 
 export default function AccountScreen({ 
-  user, 
+  user: propUser, 
   isAdminUser,
   onSignOut, 
   onNavigateSettings, 
   onNavigateAdmin,
   onNavigateAuth 
 }: AccountScreenProps) {
+  // Fix: Track authentication state locally to prevent crashes and sync properly
+  const [currentUser, setCurrentUser] = useState<any>(propUser || auth.currentUser);
+  const [authLoading, setAuthLoading] = useState(!propUser);
+
   const [userOrders, setUserOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
 
-  // Fetch current user from Firebase auth
+  // Keep local user state synchronized with Firebase auth changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
+    if (propUser) {
+      setCurrentUser(propUser);
+      setAuthLoading(false);
+      return;
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setCurrentUser(u);
       setAuthLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [propUser]);
 
   // Fetch orders specific to the logged-in user in real-time
   useEffect(() => {
@@ -60,17 +72,26 @@ export default function AccountScreen({
     return () => unsubscribe();
   }, [currentUser, authLoading]);
 
+  // Show a loading screen while resolving authentication status
+  if (authLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#d97706" />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {user ? (
+        {currentUser ? (
           /* --- LOGGED IN FULL SCREEN VIEW --- */
           <View style={styles.card}>
             <View style={styles.avatarBox}>
               <Ionicons name="person" size={36} color="#d97706" />
             </View>
             <Text style={styles.welcomeText}>Welcome Back</Text>
-            <Text style={styles.emailText}>{user.email || 'VIP Member'}</Text>
+            <Text style={styles.emailText}>{currentUser.email || 'VIP Member'}</Text>
 
             {isAdminUser && (
               <View style={styles.adminBadge}>
@@ -102,7 +123,7 @@ export default function AccountScreen({
                 <ActivityIndicator color="#d97706" style={{ marginVertical: 14 }} />
               ) : userOrders.length === 0 ? (
                 <View style={styles.emptyOrdersBox}>
-                  <Text style={styles.emptyOrdersText}>No past orders found.</Text>
+                  <Text style={styles.emptyOrdersText}>No past orders found for this account.</Text>
                 </View>
               ) : (
                 userOrders.map((order) => {
@@ -165,19 +186,19 @@ export default function AccountScreen({
                       {/* Items List */}
                       {order.items && order.items.length > 0 && (
                         <View style={{ marginTop: 8 }}>
-                          <Text style={{ fontWeight: '600', marginBottom: 4 }}>Items:</Text>
+                          <Text style={{ fontWeight: '600', marginBottom: 4, color: '#ffffff', fontSize: 11 }}>Items:</Text>
                           {order.items.map((item: any, idx: number) => (
                             <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 }}>
                               <Text style={{ flex: 1, fontSize: 10, color: '#cccccc' }}>
                                 • {item.productName} (x{item.quantity})
                               </Text>
                               <Text style={{ fontSize: 10, color: '#a3a3a3', textAlign: 'right' }}>
-                                €{(item.price || 0).toFixed(2)}
+                                €{((item.price || 0) * (item.quantity || 1)).toFixed(2)}
                               </Text>
                             </View>
                           ))}
                         </View>
-                        )}
+                      )}
                     </View>
                   );
                 })
@@ -343,6 +364,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   statusTag: {
+    propUser: undefined,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
@@ -367,16 +389,6 @@ const styles = StyleSheet.create({
     color: '#a3a3a3',
     fontSize: 12,
     marginBottom: 2,
-  },
-  itemsList: {
-    marginTop: 6,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: '#2e2e2e',
-  },
-  itemRowText: {
-    color: '#cccccc',
-    fontSize: 11,
   },
   primaryBtn: {
     width: '100%',

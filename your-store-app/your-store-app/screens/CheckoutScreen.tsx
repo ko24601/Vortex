@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
-import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { db } from '../firebase';
 import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
 import { storage } from '../utils/storage';
@@ -33,6 +32,10 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
   const [couponInput, setCouponInput] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
 
+  // PayPal v6 SDK States
+  const [isSdkReady, setIsSdkReady] = useState(false);
+  const paypalButtonContainerRef = useRef<HTMLDivElement>(null);
+
   // Automatically apply the first active coupon on mount if available
   useEffect(() => {
     if (coupons && coupons.length > 0 && !appliedCoupon) {
@@ -58,6 +61,120 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
 
     fetchPickupLocation();
   }, []);
+
+  // Load PayPal SDK v6 dynamically on Web
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    const scriptId = 'paypal-sdk-v6';
+    let script = document.getElementById(scriptId) as HTMLScriptElement;
+
+    const initPayPal = async () => {
+      try {
+        if (window.paypal && window.paypal.createInstance) {
+          setIsSdkReady(true);
+        }
+      } catch (e) {
+        console.error('PayPal v6 init error:', e);
+      }
+    };
+
+    if (!script) {
+      script = document.createElement('script');
+      script.id = scriptId;
+      script.src = 'https://www.paypal.com/web-sdk/v6/core';
+      script.async = true;
+      script.onload = () => initPayPal();
+      document.body.appendChild(script);
+    } else {
+      initPayPal();
+    }
+  }, []);
+
+  // Render PayPal v6 Buttons when container and SDK are ready
+  useEffect(() => {
+    if (Platform.OS !== 'web' || paymentMethod !== 'card' || !isSdkReady) return;
+
+    let isMounted = true;
+    const renderPayPalButton = async () => {
+      try {
+        if (!paypalButtonContainerRef.current) return;
+        paypalButtonContainerRef.current.innerHTML = ''; // Clear previous container contents
+
+        const sdkInstance = await window.paypal.createInstance({
+          clientId: "BAARoya-d5jvDgZnul81zlpCxLemLlZg46j5q2vm1SFrUwl5OQxfISaYhl_grQvFCTI0Mcpd92ifh-xc8",
+          components: ["paypal-payments"],
+        });
+
+        if (!isMounted) return;
+
+        // Create the payment session using SDK v6 structure
+        const paymentSession = sdkInstance.createPayPalOneTimePaymentSession({
+          getCheckoutOptions: () => {
+            return {
+              amount: {
+                currency_code: 'EUR',
+                value: finalTotal.toFixed(2),
+              },
+            };
+          },
+          onApprove: async (data: { orderID: string }) => {
+            try {
+              setIsSubmitting(true);
+              const verifyRes = await fetchWithTimeout(
+                'https://verifypaypalpayment-n7mesbuj3q-uc.a.run.app',
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ orderID: data.orderID }),
+                },
+                10000
+              );
+              const verifyData = await verifyRes.json();
+              if (verifyData.verified) {
+                await storage.setItem('@store_payment_success_v2', 'true');
+                await storage.setItem('@store_basket_v2', JSON.stringify({}));
+                await handleFinalCheckout();
+              } else {
+                Alert.alert('Payment Error', 'Payment could not be verified. Please contact support.');
+              }
+            } catch (err: any) {
+              if (err.name === 'TimeoutError') {
+                Alert.alert('Timeout', 'Payment verification timed out, but your transaction was processed.');
+                await storage.setItem('@store_payment_success_v2', 'true');
+                await storage.setItem('@store_basket_v2', JSON.stringify({}));
+                await handleFinalCheckout();
+              } else {
+                Alert.alert('Error', 'Something went wrong after payment.');
+              }
+            } finally {
+              setIsSubmitting(false);
+            }
+          },
+          onCancel: () => {
+            setIsSubmitting(false);
+          },
+          onError: (err: any) => {
+            console.error('PayPal v6 Error:', err);
+            Alert.alert('Error', 'An error occurred with PayPal checkout.');
+          }
+        });
+
+        // Render the button into the web DOM node
+        if (paypalButtonContainerRef.current) {
+          paymentSession.render(paypalButtonContainerRef.current);
+        }
+      } catch (error) {
+        console.error('Error rendering PayPal v6 buttons:', error);
+      }
+    };
+
+    renderPayPalButton();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isSdkReady, paymentMethod, finalTotal]);
 
   // Handle applying user-entered coupon code
   const handleApplyCoupon = () => {
@@ -119,7 +236,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         paymentStatus: paymentMethod === 'card' ? 'Paid (Simulated)' : 'Pending',
         couponApplied: appliedCoupon ? appliedCoupon.code : null,
         discountPercent: discountPercent,
-        userId: user?.uid || null, // Add userId if user is logged in
+        userId: user?.uid || null,
         customer: {
           name: customerName.trim(),
           phone: customerPhone.trim(),
@@ -143,8 +260,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     }
   };
 
-  // Helper function for fetch with timeout
-  const fetchWithTimeout = async (url, options, timeoutMs = 10000) => {
+  const fetchWithTimeout = async (url: string, options: any, timeoutMs = 10000) => {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeoutMs);
     const response = await fetch(url, {
@@ -205,7 +321,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
             <TextInput style={styles.input} placeholder="Calle San Jose" placeholderTextColor="#9ca3af" value={customerAddress} onChangeText={setCustomerAddress} />
 
             <Text style={styles.label}>City / Postal Code</Text>
-            <TextInput style={styles.input} placeholder="Madird, 87952" placeholderTextColor="#9ca3af" value={customerCity} onChangeText={setCustomerCity} />
+            <TextInput style={styles.input} placeholder="Madrid, 87952" placeholderTextColor="#9ca3af" value={customerCity} onChangeText={setCustomerCity} />
           </>
         ) : (
           <View style={styles.pickupBox}>
@@ -272,134 +388,10 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
           </TouchableOpacity>
         </View>
 
+        {/* PayPal v6 Button container (Web) or standard cash button fallback */}
         {paymentMethod === 'card' && Platform.OS === 'web' ? (
           <View style={{ marginTop: 16, zIndex: 0 }}>
-            <PayPalScriptProvider options={{ "client-id": "BAARoya-d5jvDgZnul81zlpCxLemLlZg46j5q2vm1SFrUwl5OQxfISaYhl_grQvFCTI0Mcpd92ifh-xc8", currency: "EUR" }}>
-              <PayPalButtons
-                style={{ layout: "vertical", color: "black", shape: "rect" }}
-                onClick={(data, actions) => {
-                  if (!customerName.trim() || !customerPhone.trim()) {
-                    Alert.alert('Incomplete Fields', 'Please provide your name and phone number.');
-                    return actions.reject();
-                  }
-                  if (fulfillmentType === 'delivery' && (!customerAddress.trim() || !customerCity.trim())) {
-                    Alert.alert('Address Missing', 'Please provide your delivery address and city.');
-                    return actions.reject();
-                  }
-                  return actions.resolve();
-                }}
-                createOrder={(data, actions) => {
-                  // Build item list for PayPal so the buyer can see exactly what they ordered
-                  const paypalItems = Object.entries(basket).map(([id, qty]) => {
-                    const prod = products.find(p => p.id === id);
-                    return {
-                      name: prod ? prod.name : 'Item',
-                      unit_amount: {
-                        currency_code: 'EUR',
-                        value: prod ? prod.price.toFixed(2) : '0.00',
-                      },
-                      quantity: String(qty),
-                    };
-                  });
-
-                  // If a discount is applied, add it as a negative line (discount)
-                  const itemsSubtotal = paypalItems.reduce(
-                    (sum, item) => sum + parseFloat(item.unit_amount.value) * parseInt(item.quantity),
-                    0
-                  );
-
-                  // Build shipping address for PayPal if delivery
-                  const shippingAddress = fulfillmentType === 'delivery'
-                    ? {
-                      name: { full_name: customerName.trim() },
-                      address: {
-                        address_line_1: customerAddress.trim(),
-                        admin_area_2: customerCity.trim(),
-                        country_code: 'ES',
-                      },
-                      phone_number: { national_number: customerPhone.trim() }
-                    }
-                    : undefined;
-
-                  return actions.order.create({
-                    intent: 'CAPTURE',
-                    application_context: {
-                      brand_name: 'VORTEX',
-                      return_url: baseUrl,
-                      cancel_url: baseUrl,
-                      shipping_preference: fulfillmentType === 'delivery' ? 'SET_PROVIDED_ADDRESS' : 'NO_SHIPPING',
-                      user_action: 'PAY_NOW',
-                    },
-                    purchase_units: [
-                      {
-                        description: fulfillmentType === 'delivery'
-                          ? `Delivery to: ${customerAddress.trim()}, ${customerCity.trim()}`
-                          : `Store Pickup — ${pickupAddress}`,
-                        items: paypalItems,
-                        amount: {
-                          currency_code: 'EUR',
-                          value: finalTotal.toFixed(2),
-                          breakdown: {
-                            item_total: {
-                              currency_code: 'EUR',
-                              value: itemsSubtotal.toFixed(2),
-                            },
-                            discount: {
-                              currency_code: 'EUR',
-                              value: discountAmount.toFixed(2),
-                            },
-                          },
-                        },
-                        ...(shippingAddress ? { shipping: shippingAddress } : {}),
-                      },
-                    ],
-                  });
-                }}
-                onApprove={async (data, actions) => {
-                  try {
-                    setIsSubmitting(true);
-                    // Capture the payment client-side
-                    await actions.order!.capture();
-
-                    // Verify server-side via Firebase Cloud Function with timeout
-                    const verifyRes = await fetchWithTimeout(
-                      'https://verifypaypalpayment-n7mesbuj3q-uc.a.run.app',
-                      {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ orderID: data.orderID }),
-                      },
-                      10000 // 10 seconds timeout
-                    );
-                    const verifyData = await verifyRes.json();
-                    if (verifyData.verified) {
-                      // Set payment success flag and clear basket
-                      await storage.setItem('@store_payment_success_v2', 'true');
-                      await storage.setItem('@store_basket_v2', JSON.stringify({}));
-                      await handleFinalCheckout();
-                    } else {
-                      Alert.alert('Payment Error', 'Payment could not be verified. Please contact support.');
-                    }
-                  } catch (err) {
-                    // Handle timeout or other errors
-                    if (err.name === 'TimeoutError') {
-                      Alert.alert(
-                        'Payment Verification Timeout',
-                        'We are verifying your payment. Please check your PayPal account for confirmation. Your payment may still be processing.'
-                      );
-                      // Even if verification times out, we proceed optimistically since payment was captured
-                      await storage.setItem('@store_payment_success_v2', 'true');
-                      await storage.setItem('@store_basket_v2', JSON.stringify({}));
-                      await handleFinalCheckout();
-                    } else {
-                      Alert.alert('Error', 'Something went wrong after payment. Please contact support.');
-                    }
-                  } finally {
-                    setIsSubmitting(false);
-                  }
-                }}
-              />
-            </PayPalScriptProvider>
+            <div ref={paypalButtonContainerRef} style={{ width: '100%', minHeight: 45 }} />
           </View>
         ) : (
           <TouchableOpacity style={[styles.btn, { opacity: isSubmitting ? 0.7 : 1 }]} onPress={handleFinalCheckout} disabled={isSubmitting}>
