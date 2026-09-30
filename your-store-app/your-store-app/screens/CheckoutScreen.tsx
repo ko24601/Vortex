@@ -35,12 +35,6 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
   const [isSdkReady, setIsSdkReady] = useState(false);
   const paypalButtonContainerRef = useRef<HTMLDivElement>(null);
 
-  // Refs for tracking DOM inputs directly
-  const nameInputRef = useRef<any>(null);
-  const phoneInputRef = useRef<any>(null);
-  const addressInputRef = useRef<any>(null);
-  const cityInputRef = useRef<any>(null);
-
   // Calculations
   const basketSubtotal = Object.entries(basket).reduce((sum, [id, qty]) => {
     const p = products.find((item) => item.id === id);
@@ -51,34 +45,9 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
   const discountAmount = (basketSubtotal * discountPercent) / 100;
   const finalTotal = Math.max(0, basketSubtotal - discountAmount);
 
-  // Helper to force sync values from DOM refs and state
-  const getSyncedValues = () => {
-    if (Platform.OS === 'web') {
-      const domName = nameInputRef.current?.value || '';
-      const domPhone = phoneInputRef.current?.value || '';
-      const domAddress = addressInputRef.current?.value || '';
-      const domCity = cityInputRef.current?.value || '';
-
-      return {
-        name: domName.trim() ? domName : customerName,
-        phone: domPhone.trim() ? domPhone : customerPhone,
-        address: domAddress.trim() ? domAddress : customerAddress,
-        city: domCity.trim() ? domCity : customerCity,
-      };
-    }
-    return { name: customerName, phone: customerPhone, address: customerAddress, city: customerCity };
-  };
-
-  // Final checkout action handler for Cash or PayPal orders
+  // Final checkout action handler for Cash or PayPal orders (Name/Phone validation removed)
   const handleFinalCheckout = async (paymentStatusText = 'Pending') => {
-    const vals = getSyncedValues();
-
-    if (!vals.name.trim() || !vals.phone.trim()) {
-      Alert.alert('Incomplete Fields', 'Please provide your name and phone number.');
-      return;
-    }
-
-    if (fulfillmentType === 'delivery' && (!vals.address.trim() || !vals.city.trim())) {
+    if (fulfillmentType === 'delivery' && (!customerAddress.trim() || !customerCity.trim())) {
       Alert.alert('Address Missing', 'Please provide your delivery address and city.');
       return;
     }
@@ -106,10 +75,10 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         discountPercent: discountPercent,
         userId: user?.uid || null,
         customer: {
-          name: vals.name.trim(),
-          phone: vals.phone.trim(),
-          address: fulfillmentType === 'delivery' ? vals.address.trim() : `Pickup: ${pickupAddress}`,
-          city: fulfillmentType === 'delivery' ? vals.city.trim() : 'N/A',
+          name: customerName.trim() || 'PayPal Customer',
+          phone: customerPhone.trim() || 'N/A',
+          address: fulfillmentType === 'delivery' ? customerAddress.trim() : `Pickup: ${pickupAddress}`,
+          city: fulfillmentType === 'delivery' ? customerCity.trim() : 'N/A',
         },
         items: orderedItems,
         subtotal: basketSubtotal,
@@ -199,13 +168,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
               label: 'paypal'
             },
             createOrder: (_data: any, actions: any) => {
-              const vals = getSyncedValues();
-
-              if (!vals.name.trim() || !vals.phone.trim()) {
-                Alert.alert('Incomplete Fields', 'Please provide your name and phone number before paying.');
-                throw new Error('Missing customer details');
-              }
-              if (fulfillmentType === 'delivery' && (!vals.address.trim() || !vals.city.trim())) {
+              if (fulfillmentType === 'delivery' && (!customerAddress.trim() || !customerCity.trim())) {
                 Alert.alert('Address Missing', 'Please provide your delivery address and city before paying.');
                 throw new Error('Missing delivery details');
               }
@@ -230,7 +193,6 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
                   paypalButtonContainerRef.current.innerHTML = '<p style="color: #34d399; text-align: center; font-weight: bold; padding: 10px;">Payment Approved! Redirecting...</p>';
                 }
 
-                const vals = getSyncedValues();
                 await storage.setItem('@store_basket_v2', JSON.stringify({}));
                 const fallbackRef = `VT-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -247,10 +209,10 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
                   discountPercent: discountPercent,
                   userId: user?.uid || null,
                   customer: {
-                    name: vals.name.trim(),
-                    phone: vals.phone.trim(),
-                    address: fulfillmentType === 'delivery' ? vals.address.trim() : `Pickup: ${pickupAddress}`,
-                    city: fulfillmentType === 'delivery' ? vals.city.trim() : 'N/A',
+                    name: customerName.trim() || 'PayPal Customer',
+                    phone: customerPhone.trim() || 'N/A',
+                    address: fulfillmentType === 'delivery' ? customerAddress.trim() : `Pickup: ${pickupAddress}`,
+                    city: fulfillmentType === 'delivery' ? customerCity.trim() : 'N/A',
                   },
                   subtotal: basketSubtotal,
                   discount: discountAmount,
@@ -289,7 +251,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     return () => {
       isMounted = false;
     };
-  }, [isSdkReady, paymentMethod, finalTotal, fulfillmentType]);
+  }, [isSdkReady, paymentMethod, finalTotal, fulfillmentType, customerName, customerPhone, customerAddress, customerCity]);
 
   const handleApplyCoupon = () => {
     const trimmedCode = couponInput.trim().toUpperCase();
@@ -347,59 +309,43 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.label}>Full Name</Text>
+        <Text style={styles.label}>Full Name (Optional)</Text>
         <TextInput 
-          ref={nameInputRef}
           style={styles.input} 
           placeholder="Jane Doe" 
           placeholderTextColor="#64748b" 
           value={customerName} 
           onChangeText={setCustomerName}
-          autoComplete="off"
-          autoCorrect={false}
-          {...({ 'data-lpignore': 'true', 'data-form-type': 'other' } as any)}
         />
 
-        <Text style={styles.label}>Phone Number</Text>
+        <Text style={styles.label}>Phone Number (Optional)</Text>
         <TextInput 
-          ref={phoneInputRef}
           style={styles.input} 
           placeholder="+34 600 000 000" 
           placeholderTextColor="#64748b" 
           keyboardType="phone-pad" 
           value={customerPhone} 
           onChangeText={setCustomerPhone}
-          autoComplete="off"
-          autoCorrect={false}
-          {...({ 'data-lpignore': 'true', 'data-form-type': 'other' } as any)}
         />
 
         {fulfillmentType === 'delivery' ? (
           <>
             <Text style={styles.label}>Delivery Street Address</Text>
             <TextInput 
-              ref={addressInputRef}
               style={styles.input} 
               placeholder="Calle San Jose" 
               placeholderTextColor="#64748b" 
               value={customerAddress} 
               onChangeText={setCustomerAddress}
-              autoComplete="off"
-              autoCorrect={false}
-              {...({ 'data-lpignore': 'true', 'data-form-type': 'other' } as any)}
             />
 
             <Text style={styles.label}>City / Postal Code</Text>
             <TextInput 
-              ref={cityInputRef}
               style={styles.input} 
               placeholder="Madrid, 87952" 
               placeholderTextColor="#64748b" 
               value={customerCity} 
               onChangeText={setCustomerCity}
-              autoComplete="off"
-              autoCorrect={false}
-              {...({ 'data-lpignore': 'true', 'data-form-type': 'other' } as any)}
             />
           </>
         ) : (
@@ -430,8 +376,6 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
               autoCapitalize="characters"
               value={couponInput}
               onChangeText={setCouponInput}
-              autoComplete="off"
-              {...({ 'data-lpignore': 'true' } as any)}
             />
             <TouchableOpacity style={styles.applyCouponBtn} onPress={handleApplyCoupon}>
               <Text style={styles.applyCouponBtnText}>Apply</Text>
