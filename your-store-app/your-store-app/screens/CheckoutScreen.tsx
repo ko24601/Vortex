@@ -26,7 +26,6 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
 
   // Dynamic Pickup Location State from Firestore
   const [pickupAddress, setPickupAddress] = useState('Loading pickup location...');
-  const baseUrl = `${window.location.origin}${window.location.pathname}`;
 
   // Interactive Coupon State
   const [couponInput, setCouponInput] = useState('');
@@ -35,6 +34,85 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
   // PayPal v6 SDK States
   const [isSdkReady, setIsSdkReady] = useState(false);
   const paypalButtonContainerRef = useRef<HTMLDivElement>(null);
+
+  // Calculations
+  const basketSubtotal = Object.entries(basket).reduce((sum, [id, qty]) => {
+    const p = products.find((item) => item.id === id);
+    return sum + (p ? p.price * qty : 0);
+  }, 0);
+
+  const discountPercent = appliedCoupon ? appliedCoupon.discountPercent : 0;
+  const discountAmount = (basketSubtotal * discountPercent) / 100;
+  const finalTotal = Math.max(0, basketSubtotal - discountAmount);
+
+  // Fetch with timeout helper
+  const fetchWithTimeout = async (url: string, options: any, timeoutMs = 10000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+  };
+
+  // Final checkout action handler
+  const handleFinalCheckout = async () => {
+    if (!customerName.trim() || !customerPhone.trim()) {
+      Alert.alert('Incomplete Fields', 'Please provide your name and phone number.');
+      return;
+    }
+
+    if (fulfillmentType === 'delivery' && (!customerAddress.trim() || !customerCity.trim())) {
+      Alert.alert('Address Missing', 'Please provide your delivery address and city.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const orderRef = `VT-${Math.floor(1000 + Math.random() * 9000)}`;
+
+      const orderedItems = Object.entries(basket).map(([id, qty]) => {
+        const prod = products.find(p => p.id === id);
+        return {
+          productId: id,
+          productName: prod ? prod.name : 'Unknown Item',
+          price: prod ? prod.price : 0,
+          quantity: qty
+        };
+      });
+
+      await addDoc(collection(db, 'orders'), {
+        orderReference: orderRef,
+        fulfillment: fulfillmentType,
+        paymentMethod: paymentMethod,
+        paymentStatus: paymentMethod === 'card' ? 'Paid (Simulated)' : 'Pending',
+        couponApplied: appliedCoupon ? appliedCoupon.code : null,
+        discountPercent: discountPercent,
+        userId: user?.uid || null,
+        customer: {
+          name: customerName.trim(),
+          phone: customerPhone.trim(),
+          address: fulfillmentType === 'delivery' ? customerAddress.trim() : `Pickup: ${pickupAddress}`,
+          city: fulfillmentType === 'delivery' ? customerCity.trim() : 'N/A',
+        },
+        items: orderedItems,
+        subtotal: basketSubtotal,
+        discount: discountAmount,
+        total: finalTotal,
+        createdAt: Date.now(),
+        status: 'Processing'
+      });
+
+      onOrderPlaced(orderRef);
+    } catch (error) {
+      console.error('Order submission error:', error);
+      Alert.alert('Order Failed', 'Could not process your order at this time. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Automatically apply the first active coupon on mount if available
   useEffect(() => {
@@ -71,7 +149,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
 
     const initPayPal = async () => {
       try {
-        if (window.paypal && window.paypal.createInstance) {
+        if ((window as any).paypal && (window as any).paypal.createInstance) {
           setIsSdkReady(true);
         }
       } catch (e) {
@@ -101,7 +179,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
         if (!paypalButtonContainerRef.current) return;
         paypalButtonContainerRef.current.innerHTML = ''; // Clear previous container contents
 
-        const sdkInstance = await window.paypal.createInstance({
+        const sdkInstance = await (window as any).paypal.createInstance({
           clientId: "BAARoya-d5jvDgZnul81zlpCxLemLlZg46j5q2vm1SFrUwl5OQxfISaYhl_grQvFCTI0Mcpd92ifh-xc8",
           components: ["paypal-payments"],
         });
@@ -176,7 +254,6 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
     };
   }, [isSdkReady, paymentMethod, finalTotal]);
 
-  // Handle applying user-entered coupon code
   const handleApplyCoupon = () => {
     const trimmedCode = couponInput.trim().toUpperCase();
     if (!trimmedCode) return;
@@ -193,82 +270,6 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
 
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
-  };
-
-  const basketSubtotal = Object.entries(basket).reduce((sum, [id, qty]) => {
-    const p = products.find((item) => item.id === id);
-    return sum + (p ? p.price * qty : 0);
-  }, 0);
-
-  const discountPercent = appliedCoupon ? appliedCoupon.discountPercent : 0;
-  const discountAmount = (basketSubtotal * discountPercent) / 100;
-  const finalTotal = Math.max(0, basketSubtotal - discountAmount);
-
-  const handleFinalCheckout = async () => {
-    if (!customerName.trim() || !customerPhone.trim()) {
-      Alert.alert('Incomplete Fields', 'Please provide your name and phone number.');
-      return;
-    }
-
-    if (fulfillmentType === 'delivery' && (!customerAddress.trim() || !customerCity.trim())) {
-      Alert.alert('Address Missing', 'Please provide your delivery address and city.');
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
-      const orderRef = `VT-${Math.floor(1000 + Math.random() * 9000)}`;
-
-      const orderedItems = Object.entries(basket).map(([id, qty]) => {
-        const prod = products.find(p => p.id === id);
-        return {
-          productId: id,
-          productName: prod ? prod.name : 'Unknown Item',
-          price: prod ? prod.price : 0,
-          quantity: qty
-        };
-      });
-
-      await addDoc(collection(db, 'orders'), {
-        orderReference: orderRef,
-        fulfillment: fulfillmentType,
-        paymentMethod: paymentMethod,
-        paymentStatus: paymentMethod === 'card' ? 'Paid (Simulated)' : 'Pending',
-        couponApplied: appliedCoupon ? appliedCoupon.code : null,
-        discountPercent: discountPercent,
-        userId: user?.uid || null,
-        customer: {
-          name: customerName.trim(),
-          phone: customerPhone.trim(),
-          address: fulfillmentType === 'delivery' ? customerAddress.trim() : `Pickup: ${pickupAddress}`,
-          city: fulfillmentType === 'delivery' ? customerCity.trim() : 'N/A',
-        },
-        items: orderedItems,
-        subtotal: basketSubtotal,
-        discount: discountAmount,
-        total: finalTotal,
-        createdAt: Date.now(),
-        status: 'Processing'
-      });
-
-      onOrderPlaced(orderRef);
-    } catch (error) {
-      console.error('Order submission error:', error);
-      Alert.alert('Order Failed', 'Could not process your order at this time. Please try again.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const fetchWithTimeout = async (url: string, options: any, timeoutMs = 10000) => {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeoutMs);
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
-    clearTimeout(id);
-    return response;
   };
 
   return (
@@ -430,6 +431,6 @@ const styles = StyleSheet.create({
   termsNoticeContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: 14, alignItems: 'center' },
   termsNoticeText: { fontSize: 12, color: '#64748b' },
   termsLinkText: { fontSize: 12, color: '#d97706', fontWeight: '700', textDecorationLine: 'underline' },
-  btn: { width: '100%', backgroundColor: '#171717', borderRadius: 12, height: 48, justifyContent: 'center', alignItems: 'center', marginTop: 16 },
+  btn: { width: '100%', backgroundColor: '#171717', borderRadius: id => 12, height: 48, justifyContent: 'center', alignItems: 'center', marginTop: 16 }, // safe fallback syntax
   btnText: { color: '#fff', fontWeight: '700', fontSize: 14 }
 });
