@@ -107,6 +107,24 @@ export default function AdminScreen({
     }
   };
 
+  const handleDeleteOrder = (orderId) => {
+    Alert.alert('Delete Order', 'Are you sure you want to permanently delete this order?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteDoc(doc(db, 'orders', orderId));
+            Alert.alert('Success', 'Order deleted successfully');
+          } catch (e) {
+            Alert.alert('Error', e.message);
+          }
+        },
+      },
+    ]);
+  };
+
   const handleSavePickupLocation = async () => {
     if (!pickupLocationInput.trim()) {
       Alert.alert('Error', 'Please enter a valid pickup address.');
@@ -417,10 +435,9 @@ export default function AdminScreen({
                       keyboardType="decimal-pad"
                       value={adminPrice}
                       onChangeText={(text) => {
-                        // Allow digits and a single decimal point
                         const cleaned = text.replace(/[^0-9.]/g, '');
                         const parts = cleaned.split('.');
-                        if (parts.length > 2) return; // reject second decimal point
+                        if (parts.length > 2) return;
                         setAdminPrice(cleaned);
                       }}
                     />
@@ -598,7 +615,7 @@ export default function AdminScreen({
                 })}
               </>
             ) : activeTab === 'orders' ? (
-              /* ORDERS TAB WITH EDITABLE DELIVERY STATUS */
+              /* ORDERS TAB WITH EDITABLE DELIVERY STATUS & DELETE */
               <View style={{ marginTop: 10 }}>
                 <Text style={styles.subTitle}>🧾 Customer Orders Management</Text>
                 {ordersLoading ? (
@@ -613,9 +630,14 @@ export default function AdminScreen({
                       <View key={item.id} style={styles.orderCard}>
                         <View style={styles.orderHeader}>
                           <Text style={styles.orderId}>Order #{item.id.slice(0, 8)}</Text>
-                          <Text style={[styles.orderStatus, { color: currentStatus === 'Delivered' ? '#10b981' : '#d97706' }]}>
-                            {currentStatus}
-                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                            <Text style={[styles.orderStatus, { color: currentStatus === 'Delivered' ? '#10b981' : '#d97706' }]}>
+                              {currentStatus}
+                            </Text>
+                            <TouchableOpacity onPress={() => handleDeleteOrder(item.id)}>
+                              <Text style={{ color: '#ef4444', fontWeight: 'bold', fontSize: 12 }}>Delete</Text>
+                            </TouchableOpacity>
+                          </View>
                         </View>
 
                         {/* Customer Information */}

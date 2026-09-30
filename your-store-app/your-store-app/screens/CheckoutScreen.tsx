@@ -274,7 +274,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
 
         {paymentMethod === 'card' && Platform.OS === 'web' ? (
           <View style={{ marginTop: 16, zIndex: 0 }}>
-            <PayPalScriptProvider options={{ "clientId": "BAARoya-d5jvDgZnul81zlpCxLemLlZg46j5q2vm1SFrUwl5OQxfISaYhl_grQvFCTI0Mcpd92ifh-xc8", currency: "EUR" }}>
+            <PayPalScriptProvider options={{ "client-id": "BAARoya-d5jvDgZnul81zlpCxLemLlZg46j5q2vm1SFrUwl5OQxfISaYhl_grQvFCTI0Mcpd92ifh-xc8", currency: "EUR" }}>
               <PayPalButtons
                 style={{ layout: "vertical", color: "black", shape: "rect" }}
                 onClick={(data, actions) => {
