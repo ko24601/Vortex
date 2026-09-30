@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
 import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { db, auth } from '../firebase';
@@ -39,7 +40,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
 
   // Dynamic Pickup Location State from Firestore
   const [pickupAddress, setPickupAddress] = useState('Loading pickup location...');
-  const baseUrl = `${window.location.origin}${window.location.pathname}`;
+  const baseUrl = Platform.OS === 'web' ? `${window.location.origin}${window.location.pathname}` : '';
 
   // Interactive Coupon State
   const [couponInput, setCouponInput] = useState('');
@@ -217,7 +218,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
             <TextInput style={styles.input} placeholder="Calle San Jose" placeholderTextColor="#9ca3af" value={customerAddress} onChangeText={setCustomerAddress} />
 
             <Text style={styles.label}>City / Postal Code</Text>
-            <TextInput style={styles.input} placeholder="Madird, 87952" placeholderTextColor="#9ca3af" value={customerCity} onChangeText={setCustomerCity} />
+            <TextInput style={styles.input} placeholder="Madrid, 87952" placeholderTextColor="#9ca3af" value={customerCity} onChangeText={setCustomerCity} />
           </>
         ) : (
           <View style={styles.pickupBox}>

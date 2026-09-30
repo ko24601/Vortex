@@ -675,7 +675,7 @@ export default function AdminScreen({
                             Phone: {customer.phone || 'N/A'}
                           </Text>
                         </TouchableOpacity>
-                        {fulfillmentType === 'delivery' ? (
+                        {item.fulfillment === 'delivery' ? (
                           <>
                             <Text style={styles.orderMeta}>
                               Address: {customer.address || 'N/A'}
