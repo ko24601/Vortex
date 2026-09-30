@@ -35,7 +35,7 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
   const [isSdkReady, setIsSdkReady] = useState(false);
   const paypalButtonContainerRef = useRef<HTMLDivElement>(null);
 
-  // Refs for tracking DOM inputs directly (fixes Safari autofill sync issues)
+  // Refs for tracking DOM inputs directly
   const nameInputRef = useRef<any>(null);
   const phoneInputRef = useRef<any>(null);
   const addressInputRef = useRef<any>(null);
@@ -51,14 +51,19 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
   const discountAmount = (basketSubtotal * discountPercent) / 100;
   const finalTotal = Math.max(0, basketSubtotal - discountAmount);
 
-  // Helper to force sync values from DOM refs incase of browser auto-fill
+  // Helper to force sync values from DOM refs and state
   const getSyncedValues = () => {
     if (Platform.OS === 'web') {
+      const domName = nameInputRef.current?.value || '';
+      const domPhone = phoneInputRef.current?.value || '';
+      const domAddress = addressInputRef.current?.value || '';
+      const domCity = cityInputRef.current?.value || '';
+
       return {
-        name: nameInputRef.current?.value || customerName,
-        phone: phoneInputRef.current?.value || customerPhone,
-        address: addressInputRef.current?.value || customerAddress,
-        city: cityInputRef.current?.value || customerCity,
+        name: domName.trim() ? domName : customerName,
+        phone: domPhone.trim() ? domPhone : customerPhone,
+        address: domAddress.trim() ? domAddress : customerAddress,
+        city: domCity.trim() ? domCity : customerCity,
       };
     }
     return { name: customerName, phone: customerPhone, address: customerAddress, city: customerCity };
@@ -350,11 +355,9 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
           placeholderTextColor="#64748b" 
           value={customerName} 
           onChangeText={setCustomerName}
-          onBlur={() => {
-            if (nameInputRef.current?.value && !customerName) {
-              setCustomerName(nameInputRef.current.value);
-            }
-          }}
+          autoComplete="off"
+          autoCorrect={false}
+          {...({ 'data-lpignore': 'true', 'data-form-type': 'other' } as any)}
         />
 
         <Text style={styles.label}>Phone Number</Text>
@@ -366,11 +369,9 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
           keyboardType="phone-pad" 
           value={customerPhone} 
           onChangeText={setCustomerPhone}
-          onBlur={() => {
-            if (phoneInputRef.current?.value && !customerPhone) {
-              setCustomerPhone(phoneInputRef.current.value);
-            }
-          }}
+          autoComplete="off"
+          autoCorrect={false}
+          {...({ 'data-lpignore': 'true', 'data-form-type': 'other' } as any)}
         />
 
         {fulfillmentType === 'delivery' ? (
@@ -383,11 +384,9 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
               placeholderTextColor="#64748b" 
               value={customerAddress} 
               onChangeText={setCustomerAddress}
-              onBlur={() => {
-                if (addressInputRef.current?.value && !customerAddress) {
-                  setCustomerAddress(addressInputRef.current.value);
-                }
-              }}
+              autoComplete="off"
+              autoCorrect={false}
+              {...({ 'data-lpignore': 'true', 'data-form-type': 'other' } as any)}
             />
 
             <Text style={styles.label}>City / Postal Code</Text>
@@ -398,11 +397,9 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
               placeholderTextColor="#64748b" 
               value={customerCity} 
               onChangeText={setCustomerCity}
-              onBlur={() => {
-                if (cityInputRef.current?.value && !customerCity) {
-                  setCustomerCity(cityInputRef.current.value);
-                }
-              }}
+              autoComplete="off"
+              autoCorrect={false}
+              {...({ 'data-lpignore': 'true', 'data-form-type': 'other' } as any)}
             />
           </>
         ) : (
@@ -433,6 +430,8 @@ export default function CheckoutScreen({ basket, products, coupons = [], onOrder
               autoCapitalize="characters"
               value={couponInput}
               onChangeText={setCouponInput}
+              autoComplete="off"
+              {...({ 'data-lpignore': 'true' } as any)}
             />
             <TouchableOpacity style={styles.applyCouponBtn} onPress={handleApplyCoupon}>
               <Text style={styles.applyCouponBtnText}>Apply</Text>
